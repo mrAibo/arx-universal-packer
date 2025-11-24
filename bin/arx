@@ -1,0 +1,1133 @@
+#!/usr/bin/env bash
+
+# Only set strict mode when running as script, not when sourced
+# This prevents modifying the user's shell settings
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    set -euo pipefail
+fi
+
+ARX_VERSION="2.0.0"
+
+arx() {
+  # Farben (Rich Palette)
+  local RED='' GREEN='' YELLOW='' BLUE='' CYAN='' MAGENTA='' WHITE='' NC='' BOLD='' DIM='' UNDERLINE=''
+  if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && (($(tput colors 2>/dev/null || echo 0) >= 8)); then
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; BLUE='\033[0;34m'
+    CYAN='\033[0;36m'; MAGENTA='\033[0;35m'; WHITE='\033[1;37m'; NC='\033[0m'
+    BOLD='\033[1m'; DIM='\033[2m'; UNDERLINE='\033[4m'
+  fi
+
+  # Logging
+  log_info()    { [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${BLUE}ℹ${NC} $*"; return 0; }
+  log_success() { [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${GREEN}✓${NC} ${BOLD}$*${NC}"; return 0; }
+  log_warning() { printf "%b\n" "${YELLOW}⚠ $*${NC}" >&2; return 0; }
+  log_error()   { printf "%b\n" "${RED}✗ $*${NC}" >&2; [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Use 'arx -h' for help${NC}" >&2; return 0; }
+  log_debug()   { [[ "${debug:-false}" == "true" ]] && printf "%b\n" "${MAGENTA}DEBUG:${NC} $*" >&2; }
+
+  # Hilfe
+  local usage
+  read -r -d '' usage <<HELPTEXT || true
+${BOLD}${CYAN}ARX${NC} - ${BLUE}Archive eXtractor${NC} ${DIM}(v${ARX_VERSION})${NC}
+${DIM}A modern, user-friendly archive manager for Linux${NC}
+
+${BOLD}SYNOPSIS${NC}
+  ${GREEN}arx${NC} [${YELLOW}MODE${NC}] [${WHITE}OPTIONS${NC}] ${MAGENTA}FILE${NC}...
+  ${GREEN}arx convert${NC} ${MAGENTA}SOURCE${NC} [${DIM}to${NC}] ${MAGENTA}DESTINATION${NC}
+
+${BOLD}DESCRIPTION${NC}
+  ARX simplifies archive operations with smart defaults, beautiful output,
+  and advanced features like format conversion and incremental backups.
+
+${BOLD}MODES${NC}
+  ${YELLOW}-x, --extract${NC}            Extract archives (default if archive detected)
+  ${YELLOW}-c, --compress${NC} ${CYAN}FORMAT${NC}    Compress files to specified format
+  ${YELLOW}-l, --list${NC}               List archive contents without extracting
+  ${YELLOW}convert${NC}                  Convert archive from one format to another
+
+${BOLD}SUPPORTED FORMATS${NC}
+  ${CYAN}tar${NC}       Uncompressed tar archive
+  ${CYAN}tar.gz${NC}    Gzip compressed (fast, good compression)
+  ${CYAN}tar.bz2${NC}   Bzip2 compressed (better compression, slower)
+  ${CYAN}tar.xz${NC}    XZ compressed (best compression, very slow)
+  ${CYAN}tar.zst${NC}   Zstandard compressed (${GREEN}recommended${NC}: fast + excellent compression)
+  ${CYAN}zip${NC}       ZIP archive (Windows/Mac compatible)
+  ${CYAN}7z${NC}        7-Zip archive (excellent compression, wide support)
+
+${BOLD}GENERAL OPTIONS${NC}
+  ${WHITE}-t, --target${NC} ${DIM}DIR${NC}         Extract/create archive in this directory
+  ${WHITE}-n, --name${NC} ${DIM}NAME${NC}          Archive name without extension (e.g., ${DIM}backup${NC})
+  ${WHITE}-v, --verbose${NC}            Show detailed progress (uses pv if available)
+  ${WHITE}-q, --quiet${NC}              Suppress all non-error output
+  ${WHITE}-d, --delete${NC}             Delete original files after successful operation
+  ${WHITE}    --verify${NC}             Verify archive integrity after creation
+  ${WHITE}    --dry-run${NC}            Show what would be done without doing it
+  ${WHITE}    --no-confirm${NC}         Skip all confirmation prompts
+  ${WHITE}    --debug${NC}               Enable debug output (shows all commands)
+
+${BOLD}COMPRESSION OPTIONS${NC}
+  ${WHITE}-L, --level${NC} ${DIM}0-9${NC}          Compression level (${DIM}0${NC}=fastest, ${DIM}9${NC}=best, ${DIM}default: 3${NC})
+  ${WHITE}-j, --jobs${NC} ${DIM}N${NC}             Parallel threads for xz/zstd (${DIM}default: auto${NC})
+  ${WHITE}-e, --exclude${NC} ${DIM}PATTERN${NC}    Exclude files matching pattern (${DIM}glob, repeatable${NC})
+  ${WHITE}-i, --include${NC} ${DIM}PATTERN${NC}    Include only files matching pattern (${DIM}repeatable${NC})
+  ${WHITE}-p, --password${NC}           Prompt for password (zip/7z only)
+  ${WHITE}    --incremental${NC} ${DIM}FILE${NC}  Incremental backup using snapshot file
+  ${WHITE}    --split${NC} ${DIM}SIZE${NC}        Split archive into chunks (${DIM}e.g., 100M, 1G, 4G${NC})
+
+${BOLD}INFORMATION${NC}
+  ${WHITE}-h, --help${NC}               Display this help message
+  ${WHITE}    --version${NC}            Show version information
+
+${BOLD}EXAMPLES${NC}
+  ${DIM}# Compress a directory to recommended format:${NC}
+  arx -c tar.zst -n backup ~/documents
+
+  ${DIM}# Extract archive (auto-detects format):${NC}
+  arx backup.tar.gz
+
+  ${DIM}# Maximum compression (slow but smallest):${NC}
+  arx -c tar.xz -L 9 -n small large_files/
+
+  ${DIM}# Fast compression with verification:${NC}
+  arx -c tar.zst -L 1 --verify -n fast data/
+
+  ${DIM}# Password-protected archive:${NC}
+  arx -c zip -p -n secure sensitive_files/
+
+  ${DIM}# Exclude temporary files and git directories:${NC}
+  arx -c tar.gz -e "*.tmp" -e "*.log" -e ".git" -n clean project/
+
+  ${DIM}# Convert archive format:${NC}
+  arx convert old_backup.zip to new_backup.tar.zst
+
+  ${DIM}# Create initial incremental backup:${NC}
+  arx -c tar.gz --incremental backup.snar -n daily_full /data
+
+  ${DIM}# Create incremental backup (only changed files):${NC}
+  arx -c tar.gz --incremental backup.snar -n daily_inc1 /data
+
+  ${DIM}# Split large archive for email/FAT32:${NC}
+  arx -c tar.gz --split 100M -n large_split big_files/
+
+  ${DIM}# Compress with progress and delete originals:${NC}
+  arx -c tar.zst -v -d -n archived old_data/
+
+${BOLD}TIPS${NC}
+  • Use ${CYAN}tar.zst${NC} for best speed/compression balance
+  • Use ${WHITE}-L 1${NC} for fast backups, ${WHITE}-L 9${NC} for archival
+  • Use ${WHITE}--verify${NC} for important backups to ensure integrity
+  • Use ${WHITE}--incremental${NC} for regular backups to save space/time
+  • Use ${WHITE}--split${NC} for archives larger than 4GB (FAT32 limit)
+
+${BOLD}CONFIGURATION${NC}
+  Create ${DIM}~/.config/arx/config${NC} to set defaults:
+    ${DIM}default_format = tar.zst${NC}
+    ${DIM}default_level = 5${NC}
+    ${DIM}default_exclude = *.tmp${NC}
+
+${BOLD}SEE ALSO${NC}
+  Full documentation: ${DIM}README.md${NC}, ${DIM}README_DE.md${NC} (German)
+  Man page: ${DIM}man ./arx.1${NC}
+  Quick reference: ${DIM}QUICKSTART.md${NC}
+HELPTEXT
+
+  # Bash-Version (mapfile -d benötigt Bash 4.4+)
+  local bash_major=${BASH_VERSINFO[0]:-0}
+  local bash_minor=${BASH_VERSINFO[1]:-0}
+  if (( bash_major < 4 )) || { (( bash_major == 4 )) && (( bash_minor < 4 )); }; then
+    log_error "Bash 4.4+ is required (current: ${bash_major}.${bash_minor})"
+    return 1
+  fi
+
+  # Defaults
+  mode="extract" verbose=false quiet=false delete_after=false
+  target_dir="." custom_name="" compress_format=""
+  exclude_patterns=() include_patterns=() input_files=() filter_file=""
+  dry_run=false no_confirm=false debug=false password="" allow_insecure_password=false verify_archive=false
+  local jobs level level_set=false
+  jobs=$({ command -v nproc >/dev/null 2>&1 && nproc; } || { command -v getconf >/dev/null 2>&1 && getconf _NPROCESSORS_ONLN; } || echo 2)
+  level=3
+
+  # --- FEHLENDE FUNKTIONEN NACHGEFÜHRT ---
+
+  check_dependencies() {
+    local missing=()
+    case "$mode" in
+      compress)
+        case "$compress_format" in
+          *tar*) command -v tar >/dev/null || missing+=("tar") ;;
+          zip)   command -v zip >/dev/null || missing+=("zip") ;;
+          7z)    command -v 7z >/dev/null || missing+=("7z") ;;
+        esac
+        if [[ "$compress_format" == *"xz" ]]; then command -v xz >/dev/null || missing+=("xz"); fi
+        if [[ "$compress_format" == *"zst" ]]; then command -v zstd >/dev/null || missing+=("zstd"); fi
+        ;;
+      extract|list)
+        # Einfacher Check, könnte man verfeinern
+        command -v tar >/dev/null || missing+=("tar")
+        command -v unzip >/dev/null || missing+=("unzip")
+        ;;
+    esac
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+      log_error "Missing dependencies: ${missing[*]}"
+      [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Install with: sudo dnf install ${missing[*]} (Fedora) or sudo apt install ${missing[*]} (Ubuntu)${NC}" >&2
+      return 1
+    fi
+    return 0
+  }
+
+  validate_inputs() {
+    if [[ ${#input_files[@]} -eq 0 ]]; then
+      log_error "No input files specified."
+      [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Example: arx -c tar.gz -n backup folder/ file.txt${NC}" >&2
+      return 1
+    fi
+    
+    # Skip validation for convert mode (target file doesn't exist yet)
+    if [[ "$mode" == "convert" ]]; then return 0; fi
+    
+    local f
+    for f in "${input_files[@]}"; do
+      if [[ ! -e "$f" ]]; then
+        log_error "File not found: $f"
+        [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Tip: Check the path or use 'ls' to list${NC}" >&2
+        return 1
+      fi
+    done
+    return 0
+  }
+
+  load_pattern_file() {
+    local file="$1"
+    if [[ ! -r "$file" ]]; then log_error "Filter file not readable: $file"; return 1; fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      if [[ "$line" == +* ]]; then
+        include_patterns+=("${line:1}")
+      elif [[ "$line" == -* ]]; then
+        exclude_patterns+=("${line:1}")
+      else
+        include_patterns+=("$line")
+      fi
+    done < "$file"
+  }
+  
+  load_config() {
+    local config_file="${ARX_CONFIG:-$HOME/.config/arx/config}"
+    [[ -f "$config_file" ]] || return 0
+    
+    while IFS='=' read -r key value; do
+      # Skip comments and empty lines
+      [[ "$key" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "$key" ]] && continue
+      
+      # Trim whitespace
+      key="${key#"${key%%[![:space:]]*}"}"
+      key="${key%"${key##*[![:space:]]}"}"
+      value="${value#"${value%%[![:space:]]*}"}"
+      value="${value%"${value##*[![:space:]]}"}"
+      
+      case "$key" in
+        default_format) [[ -z "$compress_format" ]] && compress_format="$value" ;;
+        default_level) [[ "$level_set" == "false" ]] && level="$value" ;;
+        default_exclude) exclude_patterns+=("$value") ;;
+        default_jobs) [[ -z "${jobs_set:-}" ]] && jobs="$value" ;;
+      esac
+    done < "$config_file"
+  }
+  
+  interactive_menu_dialog() {
+    local tempfile
+    tempfile=$(mktemp) || { log_error "Failed to create temp file"; return 1; }
+    trap 'rm -f "$tempfile"' RETURN
+    
+    # 1. Mode
+    dialog --clear --title "ARX - Archive eXtractor" \
+           --menu "Select an action:" 15 50 4 \
+           1 "Extract" \
+           2 "Compress" \
+           3 "List" \
+           4 "Convert" 2> "$tempfile"
+           
+    local ans; ans=$(<"$tempfile")
+    [[ -z "$ans" ]] && return 1
+    
+    case "$ans" in
+      2) mode="compress" ;;
+      3) mode="list" ;;
+      4) mode="convert" ;;
+      *) mode="extract" ;;
+    esac
+    
+    # 2. Files (allow multiple selection via inputbox - user can enter space-separated paths)
+    dialog --title "File Selection" \
+           --inputbox "Enter file(s)/folder(s) to process (space-separated):\n\nExamples:\n  file1.txt file2.txt\n  folder/\n  *.txt docs/" 12 60 "$PWD/" 2> "$tempfile"
+    local sel
+    sel=$(<"$tempfile") || sel=""
+    [[ -z "$sel" ]] && return 1
+    
+    # Split input by spaces and add to input_files
+    local IFS=' '
+    read -ra files_array <<< "$sel"
+    for f in "${files_array[@]}"; do
+      [[ -n "$f" ]] && input_files+=("$f")
+    done
+    
+    # 3. Options
+    if [[ "$mode" == "compress" ]]; then
+       dialog --menu "Select format:" 15 50 5 \
+          1 "tar.gz" \
+          2 "zip" \
+          3 "7z" \
+          4 "tar.zst" \
+          5 "tar.xz" 2> "$tempfile"
+       local fmt; fmt=$(<"$tempfile")
+       case "$fmt" in
+         2) compress_format="zip" ;;
+         3) compress_format="7z" ;;
+         4) compress_format="tar.zst" ;;
+         5) compress_format="tar.xz" ;;
+         *) compress_format="tar.gz" ;;
+       esac
+       
+       dialog --inputbox "Archive name (without extension):" 8 40 2> "$tempfile"
+       custom_name=$(<"$tempfile")
+       
+    elif [[ "$mode" == "convert" ]]; then
+       dialog --inputbox "Destination filename:" 8 40 2> "$tempfile"
+       local dest; dest=$(<"$tempfile")
+       input_files+=("to" "$dest")
+    fi
+    
+    clear
+    return 0
+  }
+
+  interactive_menu() {
+    # Dialog mode disabled - it lacks autocompletion which is crucial for file selection
+    # Always use text-based interactive mode which supports tab completion
+    # if command -v dialog >/dev/null 2>&1; then
+    #    interactive_menu_dialog
+    #    return $?
+    # fi
+    
+    clear
+    printf "%b\n" "${BOLD}${CYAN}ARX - Interactive Wizard${NC}"
+    printf "%b\n" "${DIM}An interactive wizard for archive operations${NC}"
+    echo ""
+    
+    # 1. Mode Selection
+    printf "%b\n" "${BOLD}What do you want to do?${NC}"
+    printf "%b\n" "  ${GREEN}1)${NC} ${BOLD}Extract${NC}   ${DIM}(Extracts archives to a directory)${NC}"
+    printf "%b\n" "  ${GREEN}2)${NC} ${BOLD}Compress${NC}  ${DIM}(Creates a new archive)${NC}"
+    printf "%b\n" "  ${GREEN}3)${NC} ${BOLD}List${NC}     ${DIM}(Shows the content of an archive)${NC}"
+    echo ""
+    local ans; read -r -p "Selection [1]: " ans
+    case "${ans:-1}" in
+      2) mode="compress" ;;
+      3) mode="list" ;;
+      *) mode="extract" ;;
+    esac
+
+    # 2. File Selection
+    echo ""
+    printf "%b\n" "${BOLD}Which files/folders?${NC}"
+    printf "%b\n" "${DIM}Enter filenames (separated by space) or press Enter for all (*)${NC}"
+    read -r -e -p "> " -a input_files
+    if [[ ${#input_files[@]} -eq 0 ]]; then
+      input_files=(*)
+      printf "%b\n" "${YELLOW}Using all files in the current directory.${NC}"
+    fi
+
+    # 3. Options based on Mode
+    if [[ "$mode" == "compress" ]]; then
+      echo ""
+      printf "%b\n" "${BOLD}Which format?${NC}"
+      printf "%b\n" "  ${GREEN}1)${NC} ${CYAN}tar.gz${NC}   ${DIM}(Default, good compatibility)${NC}"
+      printf "%b\n" "  ${GREEN}2)${NC} ${CYAN}zip${NC}      ${DIM}(Windows/Mac compatible)${NC}"
+      printf "%b\n" "  ${GREEN}3)${NC} ${CYAN}7z${NC}       ${DIM}(Very high compression)${NC}"
+      printf "%b\n" "  ${GREEN}4)${NC} ${CYAN}tar.zst${NC}  ${DIM}(Extremely fast & efficient)${NC}"
+      printf "%b\n" "  ${GREEN}5)${NC} ${CYAN}tar.xz${NC}   ${DIM}(Maximum compression, slow)${NC}"
+      read -r -p "Format [1]: " ans
+      case "${ans:-1}" in
+        2) compress_format="zip" ;;
+        3) compress_format="7z" ;;
+        4) compress_format="tar.zst" ;;
+        5) compress_format="tar.xz" ;;
+        *) compress_format="tar.gz" ;;
+      esac
+      
+      echo ""
+      printf "%b\n" "${BOLD}Archive name${NC} ${DIM}(without extension)${NC}"
+      read -r -p "> " custom_name
+    elif [[ "$mode" == "extract" ]]; then
+      echo ""
+      printf "%b\n" "${BOLD}Target directory${NC} ${DIM}(Enter for current)${NC}"
+      read -r -p "> " target_dir
+      [[ -z "$target_dir" ]] && target_dir="."
+    fi
+
+    echo ""
+    printf "%b\n" "${BOLD}Summary:${NC}"
+    printf "%b\n" "  Mode:   ${CYAN}$mode${NC}"
+    [[ -n "${compress_format:-}" ]] && printf "%b\n" "  Format: ${CYAN}$compress_format${NC}"
+    printf "%b\n" "  Files:  ${#input_files[@]}"
+    
+    echo ""
+    read -r -p "Start? [Y/n] " ans
+    if [[ "${ans,,}" == "n" ]]; then echo "Aborted."; return 1; fi
+    return 0
+  }
+
+  # --- UTILS ---
+
+  format_size() {
+    local bytes=$1
+    if command -v numfmt >/dev/null 2>&1; then
+      numfmt --to=iec --suffix=B "$bytes"
+    else
+      awk -v b="$bytes" 'function human(x,u){u[0]="B";u[1]="KiB";u[2]="MiB";u[3]="GiB";u[4]="TiB";i=0;while(x>=1024&&i<4){x/=1024;i++}printf"%.2f %s",x,u[i]}BEGIN{human(b)}'
+    fi
+  }
+
+  du_bytes() { 
+    if [[ -f "$1" ]]; then
+      stat_bytes "$1"
+      return
+    fi
+    # GNU du supports -b
+    if du -b /dev/null >/dev/null 2>&1; then
+      du -sb -- "$1" 2>/dev/null | awk '{print $1}'
+    else
+      # BSD/macOS du -k
+      du -sk -- "$1" 2>/dev/null | awk '{print $1 * 1024}'
+    fi
+  }
+
+  stat_bytes() {
+    local size
+    size=$(stat -c '%s' -- "$1" 2>/dev/null || stat -f '%z' -- "$1" 2>/dev/null) || return 1
+    printf "%s\n" "$size"
+  }
+
+  get_size_bytes() {
+    local path="$1"
+    if [[ -L "$path" ]]; then echo 0; return 0; fi
+    if [[ -f "$path" ]]; then local s; s=$(stat_bytes "$path") || return 1; echo "$s"; return 0; fi
+    if [[ -d "$path" ]]; then
+      local s; s=$(du_bytes "$path"); if [[ -n "${s:-}" ]]; then echo "$s"; return 0; fi
+      local sum=0
+      while IFS= read -r -d '' f; do local sf; sf=$(stat_bytes "$f") || return 1; sum=$((sum + sf)); done < <(find "$path" -type f -print0 2>/dev/null)
+      echo "$sum"; return 0
+    fi
+    echo 0; return 0
+  }
+
+  compute_total_size() {
+    local sum=0 it
+    for it in "$@"; do
+      [[ -e "$it" ]] || continue
+      local sz; sz=$(get_size_bytes "$it") || return 1
+      sum=$((sum + sz))
+    done
+    printf "%s\n" "$sum"
+    return 0
+  }
+
+  detect_format() {
+    case "$1" in
+      *.tar.gz|*.tgz) echo "tar.gz" ;;
+      *.tar.bz2|*.tbz2) echo "tar.bz2" ;;
+      *.tar.xz|*.txz) echo "tar.xz" ;;
+      *.tar.zst) echo "tar.zst" ;;
+      *.tar) echo "tar" ;;
+      *.zip) echo "zip" ;;
+      *.7z) echo "7z" ;;
+      *) echo "unknown" ;;
+    esac
+  }
+
+  confirm() {
+    local prompt="$1" default="${2:-n}" yn
+    [[ "${no_confirm:-false}" == "true" ]] && return 0
+    if [[ "$default" == "y" ]]; then yn="[Y/n]"; else yn="[y/N]"; fi
+    read -r -p "$(printf "%b" "${YELLOW}?${NC} $prompt $yn ")" -n 1
+    printf "\n"
+    [[ -z "${REPLY:-}" ]] && REPLY="$default"
+    [[ "$REPLY" =~ ^[Yy]$ ]]
+  }
+
+  # Pfad-Helfer
+  common_base_dir() {
+    local paths=("$@") abs first IFS=$'\n'
+    local abs_list=()
+    for p in "${paths[@]}"; do
+      if command -v realpath >/dev/null 2>&1; then abs=$(realpath -m -- "$p" 2>/dev/null) || abs="$p"; else abs="$p"; fi
+      abs_list+=("$abs")
+    done
+    
+    # For multiple items, find common base
+    first="${abs_list[0]}"; local base="$first"
+    for p in "${abs_list[@]}"; do while [[ "${p#"$base"}" == "$p" ]]; do base="${base%/*}"; [[ -z "$base" ]] && { base="/"; break; }; done; done
+    [[ -d "$base" ]] || base="${base%/*}"
+    [[ -z "$base" ]] && base="."
+    
+    # Improvement: If base is not CWD, go up one level to preserve the directory name
+    local cwd_abs
+    if command -v realpath >/dev/null 2>&1; then cwd_abs=$(realpath -m "$PWD"); else cwd_abs="$PWD"; fi
+    
+    if [[ "$base" != "$cwd_abs" && "$base" != "/" ]]; then
+       base="${base%/*}"
+       [[ -z "$base" ]] && base="/"
+    fi
+
+    printf "%s\n" "$base"
+  }
+
+  # Pure Bash Realpath Fallback
+  realpath_bash() {
+    local path="$1"
+    [[ "$path" == /* ]] && echo "$path" && return
+    echo "$PWD/$path"
+  }
+
+  path_rel() {
+    if command -v realpath >/dev/null 2>&1; then
+      realpath --relative-to="$1" -- "$2" 2>/dev/null || printf "%s\n" "$2"
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -c "import os,sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))" "$1" "$2" 2>/dev/null
+    else
+      # Fallback: Absolute paths via simple bash concat
+      local abs_target
+      abs_target=$(realpath_bash "$2")
+      printf "%s\n" "$abs_target"
+    fi
+  }
+
+  resolve_files_to_archive() {
+    local files=( "$@" )
+    shopt -s nullglob dotglob
+
+    if [[ ${#include_patterns[@]} -eq 0 ]]; then
+      local it
+      for it in "${files[@]}"; do printf "%s\0" "$it"; done
+      return 0
+    fi
+
+    local it
+    for it in "${files[@]}"; do
+      if [[ -d "$it" ]]; then
+        while IFS= read -r -d '' p; do
+          local inc=false exc=false pat
+          for pat in "${include_patterns[@]}"; do 
+             # shellcheck disable=SC2053
+             [[ "$p" == $pat ]] && { inc=true; break; }; 
+          done
+          if $inc; then
+            for pat in "${exclude_patterns[@]}"; do 
+               # shellcheck disable=SC2053
+               [[ "$p" == $pat ]] && { exc=true; break; }; 
+            done
+            $exc || printf "%s\0" "$p"
+          fi
+        done < <(find "$it" -print0 2>/dev/null)
+      else
+        local p="$it" inc=false exc=false pat
+        for pat in "${include_patterns[@]}"; do 
+           # shellcheck disable=SC2053
+           [[ "$p" == $pat ]] && { inc=true; break; }; 
+        done
+        if $inc; then
+          for pat in "${exclude_patterns[@]}"; do 
+             # shellcheck disable=SC2053
+             [[ "$p" == $pat ]] && { exc=true; break; }; 
+          done
+          $exc || printf "%s\0" "$p"
+        fi
+      fi
+    done
+  }
+
+  validate_level() {
+    case "$compress_format" in
+      tar) 
+        [[ "${level_set}" == "true" ]] && log_warning "Compression level ignored for 'tar'"
+        return 0
+        ;;
+      tar.gz|zip)     [[ "$level" =~ ^[0-9]$ ]] || { log_error "Level 0-9 expected"; return 1; } ;;
+      tar.bz2|tar.xz) [[ "$level" =~ ^[0-9]$ ]] || { log_error "Level 0-9 expected"; return 1; } ;;
+      tar.zst)        [[ "$level" =~ ^[0-9]+$ && "$level" -ge 1 && "$level" -le 22 ]] || { log_error "Zstd Level 1-22 expected"; return 1; } ;;
+      7z)             [[ "$level" =~ ^[0-9]$ ]] || { log_error "7z -mx=0-9 expected"; return 1; } ;;
+    esac
+    return 0
+  }
+
+  check_space_total() {
+    local total="$1" fmt="$2"
+    local required="$total"
+    case "$fmt" in
+      tar)        required=$(( required * 11 / 10 )) ;;
+      tar.gz|zip) required=$(( required * 7  / 10 )) ;;
+      tar.bz2)    required=$(( required * 6  / 10 )) ;;
+      tar.xz|tar.zst) required=$(( required / 2 )) ;;
+      7z)         required=$(( required * 4  / 10 )) ;;
+    esac
+    local avail_k
+    avail_k=$(df -k "$target_dir" 2>/dev/null | awk 'NR==2{print $4}')
+    # Wenn df fehlschlägt, überspringen
+    [[ -z "$avail_k" ]] && return 0
+    
+    if [[ $(((required + 1023)/1024)) -gt "$avail_k" ]]; then
+      log_warning "Possible lack of space: required ~$(format_size "$required"), available ~$(format_size $((avail_k*1024)))"
+      confirm "Continue despite possible lack of space?" "n" || return 1
+    fi
+    return 0
+  }
+
+  tar_supports_zstd_create() {
+    tar --zstd --version &>/dev/null && printf "" | tar --zstd -cf /dev/null - &>/dev/null || return 1
+  }
+  
+  show_spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='┤┘┴└├┌┬┐'
+    while kill -0 "$pid" 2>/dev/null; do
+      local temp=${spinstr#?}
+      printf " [%c]  " "$spinstr"
+      local spinstr=$temp${spinstr%"$temp"}
+      sleep $delay
+      printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+  }
+
+  tar_compress() {
+    local t_fmt="$1" out="$2" base="$3" total_size="$4" flist="$5"
+    local tar_ex=(); local pat
+    for pat in "${exclude_patterns[@]}"; do tar_ex+=( "--exclude=$pat" ); done
+    
+    if [[ -n "${incremental_snar:-}" ]]; then
+       local snar_abs; snar_abs=$(realpath "$incremental_snar")
+       tar_ex+=( "--listed-incremental=$snar_abs" )
+    fi
+    
+    local pv_cmd=() use_pv=false use_spinner=false
+    if [[ "$verbose" == "true" ]]; then
+      if command -v pv >/dev/null 2>&1; then
+        if (( total_size > 0 )); then pv_cmd=(pv -s "$total_size"); else pv_cmd=(pv); fi
+        use_pv=true
+      else
+        # Use spinner instead
+        use_spinner=true
+      fi
+    fi
+    
+    # Use -T to read files from list (avoids ARG_MAX)
+    # We assume filenames don't contain newlines for now.
+    
+    case "$t_fmt" in
+      tar)
+        if [[ "$use_pv" == true ]]; then (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" > "$out"
+        else (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f "$out"); fi
+        ;;
+      tar.gz)
+        local gz_level="-$level"
+        if [[ "$level" == "0" ]]; then gz_level="-1"; fi
+        [[ "$level" =~ ^[0-9]$ ]] || gz_level="-6"
+        local compressor="gzip $gz_level"
+        if command -v pigz >/dev/null 2>&1; then compressor="pigz $gz_level"; fi
+        
+        if [[ "$use_pv" == true ]]; then
+          (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" | $compressor > "$out"
+        elif [[ "$use_spinner" == true ]]; then
+          (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f - | $compressor > "$out") &
+          show_spinner $!
+          wait $!
+        else
+          (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | $compressor > "$out"
+        fi
+        ;;
+      tar.bz2)
+        local bz_level="-$level"; [[ "$level" =~ ^[0-9]$ ]] || bz_level="-9"
+        local compressor="bzip2 $bz_level"
+        if command -v pbzip2 >/dev/null 2>&1; then compressor="pbzip2 $bz_level"; fi
+
+        if [[ "$use_pv" == true ]]; then (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" | $compressor > "$out"
+        else (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | $compressor > "$out"; fi
+        ;;
+      tar.xz)
+        local XZ_OPT="--threads=${jobs} -${level}"
+        if [[ "$use_pv" == true ]]; then (cd "$base" && XZ_OPT="$XZ_OPT" tar -cJ "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" > "$out"
+        else (cd "$base" && XZ_OPT="$XZ_OPT" tar -cJ "${tar_ex[@]}" -T "$flist" -f "$out"); fi
+        ;;
+      tar.zst)
+        if tar_supports_zstd_create && (( level <= 19 )); then
+           # Tar native
+            if [[ "$use_pv" == true ]]; then (cd "$base" && ZSTD_NBTHREADS="${jobs}" ZSTD_CLEVEL="${level}" tar --zstd -c "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" > "$out"
+            else (cd "$base" && ZSTD_NBTHREADS="${jobs}" ZSTD_CLEVEL="${level}" tar --zstd -c "${tar_ex[@]}" -T "$flist" -f "$out"); fi
+        else
+           # Pipe logic
+           if [[ "$use_pv" == true ]]; then (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | "${pv_cmd[@]}" | zstd -T"${jobs}" -"${level}" -o "$out"
+           else (cd "$base" && tar -c "${tar_ex[@]}" -T "$flist" -f -) | zstd -T"${jobs}" -"${level}" -o "$out"; fi
+        fi
+        ;;
+      *) log_error "Invalid format: $t_fmt"; return 1 ;;
+    esac
+  }
+
+  list_archive_contents() {
+    local f="$1" fmt="$2"
+    case "$fmt" in
+      tar*) tar -tf "$f" ;;
+      zip)  unzip -Z1 "$f" ;;
+      7z)   7z l -ba "$f" | awk '{print $NF}' ;;
+    esac
+  }
+
+  extract_tar() {
+    local file="$1" target="$2" comp="${3:-}" tar_opts=(-x --no-same-owner)
+    case "$comp" in gz) tar_opts+=(-z);; bz2) tar_opts+=(-j);; xz) tar_opts+=(-J);; zst) tar_opts+=(--zstd);; esac
+    [[ "$verbose" == "true" ]] && tar_opts+=(-v)
+    
+    mkdir -p "$target"
+    
+    if [[ "$comp" == "zst" ]] && ! tar_supports_zstd_create; then
+       # Workaround wenn tar kein zstd kann
+       if [[ "$verbose" == "true" ]]; then zstd -d -c "$file" | tar -xv -C "$target"
+       else zstd -d -c "$file" | tar -x -C "$target"; fi
+    else
+      tar "${tar_opts[@]}" -f "$file" -C "$target"
+    fi
+    return $?
+  }
+
+  parse_args() {
+    if [[ $# -eq 0 ]]; then interactive_menu; return $?; fi
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -c|--compress) 
+          mode="compress"
+          if [[ -n "${2:-}" && "$2" != -* ]]; then
+            compress_format="$2"
+            shift 2
+          elif [[ -n "$compress_format" ]]; then
+            # Use default from config
+            shift
+          else
+            log_error "Compression format missing. Use: tar, tar.gz, tar.bz2, tar.xz, tar.zst, zip, 7z"
+            return 1
+          fi
+          ;;
+        -x|--extract)  mode="extract"; shift ;;
+        -l|--list)     mode="list"; shift ;;
+        -v|--verbose)  verbose=true; shift ;;
+        -q|--quiet)    quiet=true; shift ;;
+        -t|--target)   target_dir="${2:-}"; [[ -n "$target_dir" ]] || { log_error "Target directory missing"; return 1; }; shift 2 ;;
+        -d|--delete)   delete_after=true; shift ;;
+        -n|--name)     custom_name="${2:-}"; [[ -n "$custom_name" ]] || { log_error "Name missing"; return 1; }; shift 2 ;;
+        -e|--exclude)  exclude_patterns+=("${2:-}"); [[ -n "${exclude_patterns[-1]}" ]] || { log_error "Exclude pattern missing"; return 1; }; shift 2 ;;
+        -i|--include)  include_patterns+=("${2:-}"); [[ -n "${include_patterns[-1]}" ]] || { log_error "Include pattern missing"; return 1; }; shift 2 ;;
+        -f|--filter)   filter_file="${2:-}"; [[ -n "$filter_file" ]] || { log_error "Filter file missing"; return 1; }; shift 2 ;;
+        -j|--jobs)     jobs="${2:-}"; [[ -n "$jobs" ]] || { log_error "Number of jobs missing"; return 1; }; shift 2 ;;
+        -L|--level)    level="${2:-}"; level_set=true; [[ -n "$level" ]] || { log_error "Level missing"; return 1; }; shift 2 ;;
+        -p|--password) log_warning "7z/zip only accept argv passwords"; read -rs -p "Password: " password; printf "\n"; [[ -n "$password" ]] || { log_error "Password must not be empty"; return 1; }; shift ;;
+        --allow-insecure-password) allow_insecure_password=true; shift ;;
+        --incremental) incremental_snar="${2:-}"; [[ -n "$incremental_snar" ]] || { log_error "Snapshot file missing"; return 1; }; shift 2 ;;
+        --split) split_size="${2:-}"; [[ -n "$split_size" ]] || { log_error "Split size missing (e.g., 100M, 1G)"; return 1; }; shift 2 ;;
+        --verify)      verify_archive=true; shift ;;
+        --dry-run)     dry_run=true; shift ;;
+        --no-confirm)  no_confirm=true; shift ;;
+        --debug)       debug=true; shift ;;
+        --version)     printf "arx version %s\n" "$ARX_VERSION"; return 3 ;;
+        -h|--help)     printf "%b\n" "$usage"; return 2 ;;
+        --)            shift; while [[ $# -gt 0 ]]; do input_files+=("$1"); shift; done ;;
+        convert)       mode="convert"; shift ;;
+        -*)            log_error "Unknown option: $1"; return 1 ;;
+        *)             input_files+=("$1"); shift ;;
+      esac
+    done
+    if [[ "$mode" == "compress" && -z "$compress_format" ]]; then log_error "No compression format specified. Example: arx -c tar.gz -n archive file.txt"; return 1; fi
+    return 0
+  }
+
+  # Start
+  # Load config first so it sets defaults
+  load_config
+  
+  parse_args "$@"; local parse_status=$?
+  [[ $parse_status -eq 2 ]] && return 2
+  [[ $parse_status -eq 3 ]] && return 3
+  [[ $parse_status -ne 0 ]] && return 1
+
+  [[ "$debug" == "true" ]] && set -x
+  [[ -n "$filter_file" ]] && load_pattern_file "$filter_file"
+  validate_inputs || return 1
+  # Verzeichnis erstellen wenn es nicht existiert
+  if [[ ! -d "$target_dir" ]]; then
+     mkdir -p -- "$target_dir" || { log_error "Could not create directory: $target_dir"; return 1; }
+  fi
+  check_dependencies || return 1
+
+  local exit_code=0
+
+  if [[ "$mode" == "compress" ]]; then
+    # Name und Pfad Bestimmung
+    if [[ -z "$custom_name" ]]; then
+      if [[ ${#input_files[@]} -eq 1 && -e "${input_files[0]}" ]]; then custom_name=$(basename -- "${input_files[0]}"); custom_name="${custom_name%/}"
+      else custom_name="archive_$(date +%Y%m%d_%H%M%S)"; fi
+    fi
+    
+    local output_file
+    if [[ "$target_dir" == "." ]]; then output_file="${custom_name}.${compress_format}"
+    else case "$target_dir" in /*) output_file="${target_dir}/${custom_name}.${compress_format}" ;; *) output_file="$(pwd)/${target_dir}/${custom_name}.${compress_format}" ;; esac
+    fi
+    [[ -e "$output_file" ]] && { confirm "Target file exists: $(basename -- "$output_file"), overwrite?" "n" || return 3; }
+
+    # Dateien auflösen
+    local -a files_to_archive=()
+    mapfile -d '' -t files_to_archive < <(resolve_files_to_archive "${input_files[@]}")
+    [[ ${#files_to_archive[@]} -eq 0 ]] && { log_error "No files remaining after Include/Exclude"; [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Tip: Check your -i/-e patterns or use 'arx -h' for help${NC}" >&2; return 1; }
+    validate_level || return 1
+
+    local base; base=$(common_base_dir "${files_to_archive[@]}")
+    # Use more unique temp file name for concurrent safety
+    local flist; flist=$(mktemp -t arx.XXXXXXXXXX)
+    
+    # Clean up flist on exit/interrupt/return
+    # RETURN works better for sourced functions
+    trap "rm -f '$flist'" RETURN
+    # Also handle interrupts during compression
+    trap 'rm -f "$flist"; log_error "Compression aborted"; return 130' INT TERM
+
+    # Optimize: Batch relative path resolution
+    if command -v realpath >/dev/null 2>&1; then
+       realpath --relative-to="$base" "${files_to_archive[@]}" > "$flist"
+    else
+       local p
+       for p in "${files_to_archive[@]}"; do path_rel "$base" "$p" >> "$flist"; done
+    fi
+
+    local total_size; total_size=$(compute_total_size "${files_to_archive[@]}") || { log_warning "Could not fully determine total size"; total_size=0; }
+    check_space_total "$total_size" "$compress_format" || return 1
+    log_info "Creating ${BOLD}$output_file${NC} $(format_size "$total_size") from base: $base"
+
+    if [[ "$dry_run" == "true" ]]; then
+      printf "%b\n" "${DIM}[DRY-RUN]${NC} Format: $compress_format"
+      printf "%b\n" "Output: $output_file"
+      printf "%b\n" "File list (excerpt):"
+      head -n 5 "$flist" | sed 's/^/  /'
+      if (( $(wc -l < "$flist") > 5 )); then echo "  ..."; fi
+      return 0
+    fi
+
+    if [[ -n "$password" && "$allow_insecure_password" != "true" ]]; then
+      log_error "Password in 7z/zip is visible via argv; use --allow-insecure-password"
+      [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Safer: Use arx without password flag for interactive input${NC}" >&2
+      return 1
+    fi
+
+    case "$compress_format" in
+      tar|tar.gz|tar.bz2|tar.xz|tar.zst)
+        tar_compress "$compress_format" "$output_file" "$base" "$total_size" "$flist"
+        exit_code=$?
+        ;;
+      zip)
+        local zip_opts=(-r)
+        [[ "$verbose" != "true" ]] && zip_opts+=("-q")
+        if [[ "$level" =~ ^[0-9]$ ]]; then zip_opts+=("-${level}"); fi
+        if [[ -n "$password" ]]; then log_warning "ZIP password visible"; zip_opts+=("-P" "$password"); fi
+        # Read filelist and pass as arguments
+        local -a zip_files=()
+        while IFS= read -r line; do
+          [[ -n "$line" ]] && zip_files+=("$line")
+        done < "$flist"
+        (cd "$base" && zip "${zip_opts[@]}" "$output_file" "${zip_files[@]}")
+        exit_code=$?
+        ;;
+      7z)
+        local sz=(a)
+        [[ "$verbose" != "true" ]] && sz+=("-bb0" "-bd")
+        if [[ "$level" =~ ^[0-9]$ ]]; then sz+=("-mx=${level}"); fi
+        if [[ -n "$password" ]]; then log_warning "7z password visible"; sz+=("-p${password}" "-mhe=on"); fi
+        # Use @listfile
+        (cd "$base" && 7z "${sz[@]}" "$output_file" "@$flist")
+        exit_code=$?
+        ;;
+      *) log_error "Invalid format: $compress_format. Available formats: tar, tar.gz, tar.bz2, tar.xz, tar.zst, zip, 7z"; return 1 ;;
+    esac
+
+    if [[ $exit_code -eq 0 ]]; then
+      local output_size ratio
+      output_size=$(stat_bytes "$output_file" 2>/dev/null || echo 0)
+      if (( total_size > 0 )); then ratio=$(( (output_size * 100 + total_size/2) / total_size )); else ratio="?"; fi
+      log_success "Archive created: ${BOLD}$output_file${NC}"
+      if [[ "${quiet:-false}" != "true" ]]; then
+          if (( total_size > 0 )); then
+              printf "%b\n" "  ${DIM}Compressed: $(format_size "$total_size") → $(format_size "$output_size") (${ratio}% of original size)${NC}"
+          else
+              printf "%b\n" "  ${DIM}Size: $(format_size "$output_size")${NC}"
+          fi
+      fi
+      
+      # Split Archives
+      if [[ -n "${split_size:-}" ]]; then
+        log_info "Splitting archive into ${split_size} chunks..."
+        split -b "$split_size" -d "$output_file" "${output_file}."
+        if [[ $? -eq 0 ]]; then
+          rm "$output_file"  # Remove original
+          log_success "Archive split into parts: ${output_file}.00, ${output_file}.01, ..."
+          # Update output_file for verification (use first part)
+          output_file="${output_file}.00"
+        else
+          log_error "Failed to split archive"
+          return 1
+        fi
+      fi
+      
+      # Archive Verification
+      if [[ "$verify_archive" == "true" ]]; then
+        log_info "Verifying archive..."
+        local verify_ok=true
+        case "$compress_format" in
+          tar|tar.gz|tar.bz2|tar.xz)
+            if ! tar -tf "$output_file" >/dev/null 2>&1; then
+              verify_ok=false
+            fi
+            ;;
+          tar.zst)
+            if tar_supports_zstd_create; then
+              if ! tar --zstd -tf "$output_file" >/dev/null 2>&1; then verify_ok=false; fi
+            else
+              if ! zstd -d -c "$output_file" 2>/dev/null | tar -t >/dev/null 2>&1; then verify_ok=false; fi
+            fi
+            ;;
+          zip)
+            if ! unzip -t "$output_file" >/dev/null 2>&1; then
+              verify_ok=false
+            fi
+            ;;
+          7z)
+            if ! 7z t "$output_file" >/dev/null 2>&1; then
+              verify_ok=false
+            fi
+            ;;
+        esac
+        
+        if [[ "$verify_ok" == "true" ]]; then
+          log_success "Archive successfully verified"
+        else
+          log_error "Archive verification failed! Archive might be corrupted."
+          return 1
+        fi
+      fi
+      
+      if [[ "$delete_after" == "true" ]]; then
+        for f in "${files_to_archive[@]}"; do [[ -n "${f:-}" && -e "$f" ]] || continue; if [[ -d "$f" ]]; then rm -rf -- "$f"; else rm -f -- "$f"; fi; done
+        log_info "Original files deleted"
+      fi
+    else
+      log_error "Error (Code: $exit_code)"
+      return $exit_code
+    fi
+
+  elif [[ "$mode" == "convert" ]]; then
+    local src="${input_files[0]}"
+    local dest="${input_files[1]}"
+    if [[ "${input_files[1]}" == "to" ]]; then dest="${input_files[2]}"; fi
+    
+    if [[ -z "$src" || -z "$dest" ]]; then log_error "Usage: arx convert SOURCE [to] DEST"; return 1; fi
+    if [[ ! -f "$src" ]]; then log_error "Source not found: $src"; return 1; fi
+    
+    local tmp_dir; tmp_dir=$(mktemp -d -t arx_convert.XXXXXXXXXX)
+    
+    log_info "Converting ${BOLD}$src${NC} -> ${BOLD}$dest${NC}..."
+    
+    # 1. Extract
+    local src_fmt; src_fmt=$(detect_format "$src")
+    local ext_status=0
+    case "$src_fmt" in
+      tar*) tar -xf "$src" -C "$tmp_dir" || ext_status=$? ;;
+      zip)  unzip -q "$src" -d "$tmp_dir" || ext_status=$? ;;
+      7z)   7z x -bb0 -bd "$src" -o"$tmp_dir" >/dev/null || ext_status=$? ;;
+      *)    log_error "Source format not supported: $src_fmt"; rm -rf "$tmp_dir"; return 1 ;;
+    esac
+    
+    if [[ $ext_status -ne 0 ]]; then
+       log_error "Error extracting source."; rm -rf "$tmp_dir"; return 1
+    fi
+    
+    # 2. Compress
+    local dest_abs; dest_abs=$(realpath "$dest")
+    local comp_status=0
+    case "$dest" in
+      *.tar.gz|*.tgz) tar -czf "$dest_abs" -C "$tmp_dir" . || comp_status=$? ;;
+      *.tar.bz2|*.tbz2) tar -cjf "$dest_abs" -C "$tmp_dir" . || comp_status=$? ;;
+      *.tar.xz|*.txz) tar -cJf "$dest_abs" -C "$tmp_dir" . || comp_status=$? ;;
+      *.tar.zst) 
+        if tar_supports_zstd_create; then
+           tar --zstd -cf "$dest_abs" -C "$tmp_dir" . || comp_status=$?
+        else
+           (cd "$tmp_dir" && tar -c . | zstd -o "$dest_abs") || comp_status=$?
+        fi
+        ;;
+      *.zip) (cd "$tmp_dir" && zip -r -q "$dest_abs" .) || comp_status=$? ;;
+      *.7z) 7z a -bb0 -bd "$dest_abs" "$tmp_dir"/* >/dev/null || comp_status=$? ;;
+      *) log_error "Target format not supported (check extension): $dest"; rm -rf "$tmp_dir"; return 1 ;;
+    esac
+
+    rm -rf "$tmp_dir"
+    
+    if [[ $comp_status -eq 0 ]]; then
+       log_success "Converted: $dest"
+    else
+       log_error "Error creating target archive."
+       return 1
+    fi
+
+  elif [[ "$mode" == "list" ]]; then
+    local f fmt
+    for f in "${input_files[@]}"; do
+      fmt=$(detect_format "$f")
+      log_info "Content: ${BOLD}$f${NC} ${DIM}[$fmt]${NC}"
+      case "$fmt" in
+        tar|tar.gz|tar.bz2|tar.xz) tar -tf "$f" || exit_code=$? ;;
+        tar.zst) if tar_supports_zstd_create; then tar --zstd -tf "$f" || exit_code=$?; else zstd -d -c "$f" | tar -tf - || exit_code=$?; fi ;;
+        zip) unzip -l "$f" || exit_code=$? ;;
+        7z) 7z l "$f" || exit_code=$? ;;
+        *) log_error "Unsupported archive: $f"; exit_code=1 ;;
+      esac
+    done
+
+  else
+    # EXTRACT
+    local f fmt
+    for f in "${input_files[@]}"; do
+      fmt=$(detect_format "$f")
+      [[ "$fmt" == "unknown" ]] && { log_error "Unknown: $f"; exit_code=1; continue; }
+      if [[ "$dry_run" == "true" ]]; then printf "%b\n" "${DIM}[DRY-RUN]${NC} Extracting $f"; continue; fi
+      
+      # Smart Extract Logic
+      local extract_target="$target_dir"
+      local root_items=0
+      
+      # Check for Tarbomb (multiple root items)
+      # Simplified check: list contents, count top-level paths
+      if [[ "$fmt" == tar* || "$fmt" == "zip" || "$fmt" == "7z" ]]; then
+         # Count unique top-level directories/files
+         # We use a rough heuristic: take the first component of the path
+         local top_levels
+         top_levels=$(list_archive_contents "$f" "$fmt" 2>/dev/null | sed 's|/.*||' | sort -u | head -n 2 | wc -l)
+         
+         if (( top_levels > 1 )); then
+           local base_name; base_name=$(basename "$f")
+           base_name="${base_name%.*}"
+           # Handle double extensions like .tar.gz
+           if [[ "$base_name" == *.tar ]]; then base_name="${base_name%.tar}"; fi
+           
+           extract_target="${target_dir}/${base_name}"
+           log_info "Smart-Extract: Creating subfolder ${BOLD}$extract_target${NC}"
+           mkdir -p "$extract_target"
+         fi
+         
+         # Overwrite Check
+         if [[ "${no_confirm:-false}" != "true" ]]; then
+             local conflict=false
+             local item
+             while read -r item; do
+                 [[ -z "$item" ]] && continue
+                 if [[ -e "${extract_target}/${item}" ]]; then
+                     # If both are directories, it's usually fine (merge)
+                     if [[ -d "${extract_target}/${item}" && ( "$item" == */ || -d "${extract_target}/${item}" ) ]]; then
+                         # Check if item in archive is dir? 
+                         # Tar output has trailing slash for dirs usually.
+                         if [[ "$item" == */ ]]; then continue; fi
+                         # If local is dir, and archive item is file -> Conflict
+                         # If local is dir, and archive item is dir -> Merge (continue)
+                         # But we don't know if archive item is dir easily without trailing slash.
+                         # Tar usually adds it. Zip too.
+                         # Let's assume conflict if existing is file.
+                     fi
+                     
+                     # Refined check: Conflict if existing is NOT a directory, OR if existing is dir but we are overwriting with file?
+                     # Simpler: Conflict if existing path exists and is not a directory we are merging into.
+                     if [[ -d "${extract_target}/${item}" ]]; then continue; fi
+                     
+                     conflict=true
+                     break
+                 fi
+             done < <(list_archive_contents "$f" "$fmt" 2>/dev/null)
+             
+             if [[ "$conflict" == "true" ]]; then
+                 confirm "Files already exist in ${BOLD}$extract_target${NC}. Overwrite?" "n" || continue
+             fi
+         fi
+      fi
+
+      log_info "Extracting ${BOLD}$(basename -- "$f")${NC} to ${DIM}$extract_target${NC}"
+      case "$fmt" in
+        tar*) extract_tar "$f" "$extract_target" "${fmt#tar.}" ;; # trick um gz/xz zu holen
+        zip)
+          local unzip_opts=(); [[ "$verbose" != "true" ]] && unzip_opts+=("-q")
+          if [[ -n "$password" ]]; then unzip "${unzip_opts[@]}" -P "$password" "$f" -d "$extract_target"; else unzip "${unzip_opts[@]}" "$f" -d "$extract_target"; fi
+          ;;
+        7z)
+          local sz=(x); [[ "$verbose" != "true" ]] && sz+=("-bb0" "-bd")
+          [[ -n "$password" ]] && sz+=("-p${password}")
+          sz+=("$f" "-o${extract_target}")
+          7z "${sz[@]}"
+          ;;
+      esac
+      exit_code=$?
+    done
+  fi
+  
+  [[ "$debug" == "true" ]] && set +x
+  return $exit_code
+}
+
+_arx_autocomplete() {
+  local cur prev opts formats
+  cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
+  
+  # Complete list of options
+  opts="-c --compress -x --extract -l --list -t --target -n --name -v --verbose -q --quiet -d --delete -e --exclude -i --include -f --filter -j --jobs -L --level -p --password --allow-insecure-password --verify --dry-run --no-confirm --debug --version -h --help --"
+  
+  formats="tar tar.gz tar.bz2 tar.xz tar.zst zip 7z"
+  
+  case "$prev" in
+    -c|--compress) mapfile -t COMPREPLY < <(compgen -W "$formats" -- "$cur") ;;
+    -x|--extract|-l|--list) mapfile -t COMPREPLY < <(compgen -f -X "!*.@(tar|tgz|tar.gz|tbz2|tar.bz2|txz|tar.xz|tar.zst|zip|7z|rar|jar|war|ear)" -- "$cur") ;;
+    -t|--target)  mapfile -t COMPREPLY < <(compgen -d -- "$cur") ;;
+    -e|--exclude|-i|--include|-f|--filter) mapfile -t COMPREPLY < <(compgen -f -- "$cur") ;;
+    -n|--name)    return 0 ;; # Free text, no completion
+    -j|--jobs)
+      local max_jobs; max_jobs=$({ command -v nproc >/dev/null 2>&1 && nproc; } || echo 8)
+      mapfile -t COMPREPLY < <(compgen -W "$(seq 1 "$max_jobs")" -- "$cur")
+      ;;
+    -L|--level)   mapfile -t COMPREPLY < <(compgen -W "0 1 2 3 4 5 6 7 8 9" -- "$cur") ;;
+    *)
+      # If current word starts with -, only show options
+      if [[ "$cur" == -* ]]; then
+         mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
+      else
+         # Otherwise show files AND options (User requested this)
+         # We use a trick: combine options and files
+         # Note: This might be noisy, but it's what was asked ("list all options")
+         local file_list=$(compgen -f -- "$cur")
+         local opt_list=$(compgen -W "$opts" -- "$cur")
+         mapfile -t COMPREPLY < <(printf "%s\n%s" "$opt_list" "$file_list")
+      fi
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  shopt -q progcomp && complete -F _arx_autocomplete arx
+  export -f arx
+fi
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  arx "$@"
+  exit $?
+fi

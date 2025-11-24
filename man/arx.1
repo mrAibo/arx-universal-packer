@@ -1,0 +1,256 @@
+.TH ARX 1 "2025-11-22" "arx 2.0.0" "User Commands"
+.SH NAME
+arx \- Archive eXtractor - unified archive management tool
+.SH SYNOPSIS
+.B arx
+[\fIOPTIONS\fR] \fIfile1\fR [\fIfile2\fR ...]
+.SH DESCRIPTION
+.B arx
+is a user-friendly wrapper around tar, gzip, bzip2, xz, zstd, zip, and 7z that provides a unified interface for archive compression, extraction, and listing operations.
+
+It automatically detects archive formats, provides helpful error messages, supports pattern filtering, and includes advanced features like verification and progress display.
+
+.SH MODES
+.TP
+.B \-c, \-\-compress \fIFORMAT\fR
+Compress files into archive. FORMAT can be:
+.br
+tar, tar.gz (tgz), tar.bz2 (tbz2), tar.xz (txz), tar.zst, zip, 7z
+.TP
+.B \-x, \-\-extract
+Extract archive (default mode if archive file specified)
+.TP
+.B \-l, \-\-list
+List contents of archive
+
+.SH GENERAL OPTIONS
+.TP
+.B \-t, \-\-target \fIDIR\fR
+Target directory for extraction (default: current directory)
+.TP
+.B \-n, \-\-name \fINAME\fR
+Archive name without extension (for compression)
+.TP
+.B \-v, \-\-verbose
+Enable verbose output
+.TP
+.B \-q, \-\-quiet
+Suppress output (quiet mode)
+.TP
+.B \-d, \-\-delete
+Delete original files after successful operation
+.TP
+.B \-\-verify
+Verify archive integrity after compression
+.TP
+.B \-\-dry\-run
+Preview operation without executing
+.TP
+.B \-\-no\-confirm
+Skip confirmation prompts (for automation)
+.TP
+.B \-\-debug
+Enable debug trace output
+.TP
+.B \-\-version
+Display version information
+.TP
+.B \-h, \-\-help
+Display help message
+
+.SH COMPRESSION OPTIONS
+.TP
+.B \-L, \-\-level \fIN\fR
+Compression level: 0-9 for most formats, 1-22 for zstd
+.br
+0 = fastest/least compression
+.br
+9 = slowest/best compression
+.TP
+.B \-j, \-\-jobs \fIN\fR
+Number of parallel threads for compression
+.TP
+.B \-e, \-\-exclude \fIPATTERN\fR
+Exclude files matching glob pattern (can be used multiple times)
+.TP
+.B \-i, \-\-include \fIPATTERN\fR
+Include only files matching glob pattern (can be used multiple times)
+.TP
+.B \-f, \-\-filter \fIFILE\fR
+Load include/exclude patterns from file
+.TP
+.B \-p, \-\-password
+Prompt for password (zip and 7z only)
+.TP
+.B \-\-allow\-insecure\-password
+Allow password to be visible in process list (required with \-p)
+
+.SH EXAMPLES
+.SS Basic Compression
+.TP
+Compress a single file:
+.B arx \-c tar.gz \-n archive file.txt
+.TP
+Compress multiple files:
+.B arx \-c zip \-n backup file1.txt file2.txt
+.TP
+Compress entire directory:
+.B arx \-c tar.xz \-n project project_folder/
+
+.SS Advanced Compression
+.TP
+Compress with verification:
+.B arx \-c tar.gz \-n important \-\-verify data/
+.TP
+Compress with maximum compression:
+.B arx \-c tar.xz \-L 9 \-n small largefile.dat
+.TP
+Compress using 8 threads:
+.B arx \-c tar.xz \-j 8 \-n fast big_directory/
+.TP
+Compress excluding patterns:
+.B arx \-c tar.gz \-n code \-e "*.o" \-e "*.tmp" project/
+.TP
+Compress with password:
+.B arx \-c zip \-n secure \-p \-\-allow\-insecure\-password secret/
+
+.SS Extraction
+.TP
+Extract to current directory:
+.B arx archive.tar.gz
+.TP
+Extract to specific directory:
+.B arx \-t /opt/extracted archive.zip
+.TP
+Extract and delete archive:
+.B arx \-d old_backup.tar.gz
+
+.SS Listing
+.TP
+List archive contents:
+.B arx \-l archive.tar.gz
+.TP
+List multiple archives:
+.B arx \-l *.zip
+
+.SH FILE PATTERNS
+Pattern matching uses glob syntax:
+.TP
+.B *
+Matches any characters
+.TP
+.B ?
+Matches single character
+.TP
+.B [abc]
+Matches a, b, or c
+.TP
+.B [!abc]
+Matches any character except a, b, or c
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+General error (file not found, operation failed, etc.)
+.TP
+.B 2
+Help displayed (not an error)
+.TP
+.B 3
+Version displayed (not an error)
+.TP
+.B 130
+Interrupted by user (Ctrl+C)
+
+.SH ENVIRONMENT
+.TP
+.B ARX_SCRIPT
+Path to arx.sh script (used by test suite)
+
+.SH FILES
+.TP
+.B ~/.bashrc
+Source arx.sh here for bash completion
+
+.SH NOTES
+.SS Supported Formats
+.TP
+.B tar
+Uncompressed tar archive
+.TP
+.B tar.gz (tgz)
+Tar archive compressed with gzip (fast, good compatibility)
+.TP
+.B tar.bz2 (tbz2)
+Tar archive compressed with bzip2 (better ratio than gzip)
+.TP
+.B tar.xz (txz)
+Tar archive compressed with xz (best ratio, recommended)
+.TP
+.B tar.zst
+Tar archive compressed with zstd (fast with good ratio, modern)
+.TP
+.B zip
+ZIP archive (universal compatibility)
+.TP
+.B 7z
+7-Zip archive (excellent compression)
+
+.SS Dependencies
+Required: bash 4.4+, tar
+.br
+For specific formats: gzip, bzip2, xz, zstd, zip, 7z
+.br
+Optional: pv (for progress display)
+
+.SS Security Considerations
+.IP \(bu 2
+Passwords are stored in memory and visible in process list
+.IP \(bu 2
+Use
+.B \-p
+for interactive password entry (more secure)
+.IP \(bu 2
+Symbolic links are preserved but not validated
+.IP \(bu 2
+Archives use relative paths (no leading /)
+
+.SS Performance Tips
+.IP \(bu 2
+Use tar.zst for balanced speed and compression
+.IP \(bu 2
+Use tar.xz \-L 9 for maximum compression
+.IP \(bu 2
+Use
+.B \-j
+for parallel compression on multi-core systems
+.IP \(bu 2
+Use \-\-verify for critical data integrity
+
+.SH BUGS
+Interactive mode may hang with pexpect in some environments (tests skipped).
+
+Report bugs via your preferred method or documentation.
+
+.SH AUTHORS
+Written for production archive management with emphasis on usability and safety.
+
+.SH COPYRIGHT
+Open source - use freely.
+
+.SH SEE ALSO
+.BR tar (1),
+.BR gzip (1),
+.BR bzip2 (1),
+.BR xz (1),
+.BR zstd (1),
+.BR zip (1),
+.BR 7z (1),
+.BR pv (1)
+
+Full documentation: README.md
+.br
+Production analysis: PRODUCTION_READY_REPORT.md

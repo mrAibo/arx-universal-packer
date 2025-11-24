@@ -1,0 +1,28 @@
+#compdef arx
+
+# Zsh completion for arx
+# Place this file in a directory in your $fpath (e.g., /usr/local/share/zsh/site-functions or ~/.zsh/completions)
+
+local context state state_descr line
+typeset -A opt_args
+
+_arguments -C \
+  '(-c --compress -x --extract -l --list)'{-c,--compress}'[Compress files]:format:(tar tar.gz tar.bz2 tar.xz tar.zst zip 7z)' \
+  '(-c --compress -x --extract -l --list)'{-x,--extract}'[Extract archive (default)]' \
+  '(-c --compress -x --extract -l --list)'{-l,--list}'[List archive contents]' \
+  '(-t --target)'{-t,--target}'[Target directory]:directory:_directories' \
+  '(-n --name)'{-n,--name}'[Archive name (without extension)]:archive name:' \
+  '(-v --verbose)'{-v,--verbose}'[Verbose output (show details)]' \
+  '(-q --quiet)'{-q,--quiet}'[Quiet mode (suppress output)]' \
+  '(-d --delete)'{-d,--delete}'[Delete original files after success]' \
+  '(-j --jobs)'{-j,--jobs}'[Number of threads]:threads:' \
+  '(-L --level)'{-L,--level}'[Compression level (0-9)]:level:(0 1 2 3 4 5 6 7 8 9)' \
+  '(-e --exclude)'{-e,--exclude}'[Exclude pattern]:pattern:' \
+  '(-i --include)'{-i,--include}'[Include pattern]:pattern:' \
+  '(-p --password)'{-p,--password}'[Password protection (zip/7z)]' \
+  '--verify[Verify archive integrity after creation]' \
+  '--dry-run[Simulate operation without changes]' \
+  '--no-confirm[Skip all confirmation prompts]' \
+  '--version[Show version information]' \
+  '(-h --help)'{-h,--help}'[Display help message]' \
+  '*:filename:_files'
