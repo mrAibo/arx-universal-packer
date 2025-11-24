@@ -7,7 +7,7 @@
 
 **ARX** (Archive eXtractor) is a modern, powerful, and user-friendly archive manager for Linux. It unifies `tar`, `zip`, `7z`, `zstd`, and `xz` under a single, intuitive interface. No more memorizing complex flags like `tar -czvf` or `tar -xzvf`—ARX handles it all with smart defaults and beautiful output.
 
-![ARX Demo](tutorials/svgs/ep01_intro.svg)
+![ARX Demo](svgs/ep01_intro.svg)
 
 ---
 
@@ -61,7 +61,7 @@ ARX works best with these tools:
 ### 1. Basic Compression & Extraction
 Compress files easily with smart defaults. ARX automatically chooses the best settings.
 
-![Basic Usage](tutorials/svgs/ep02_basic.svg)
+![Basic Usage](svgs/ep02_basic.svg)
 
 ```bash
 # Compress a directory (default: tar.gz)
@@ -74,7 +74,7 @@ arx backup.tar.gz
 ### 2. Format Conversion
 Convert archives from one format to another without manual extraction.
 
-![Conversion](tutorials/svgs/ep06_convert.svg)
+![Conversion](svgs/ep06_convert.svg)
 
 ```bash
 # Convert zip to tar.zst (Zstandard)
@@ -84,7 +84,7 @@ arx convert input.zip to output.tar.zst
 ### 3. Advanced Options
 Use exclusions, password protection, and parallel processing.
 
-![Advanced](tutorials/svgs/ep03_advanced.svg)
+![Advanced](svgs/ep03_advanced.svg)
 
 ```bash
 # Exclude files and use max compression
@@ -97,7 +97,7 @@ arx -c zip -p -n secret sensitive_data/
 ### 4. Incremental Backups
 Save space by backing up only changed files.
 
-![Incremental](tutorials/svgs/ep04_incremental.svg)
+![Incremental](svgs/ep04_incremental.svg)
 
 ```bash
 # Level 0 (Full Backup)
@@ -206,7 +206,7 @@ It uses `dialog` (if installed) or a text-based menu to guide you through:
 3.  **File Selection** (with path completion)
 4.  **Options** (Password, Split, etc.)
 
-![Interactive Demo](tutorials/svgs/ep01_intro.svg)
+![Interactive Demo](svgs/ep01_intro.svg)
 
 ### GUI Integration
 ARX integrates directly into your file manager's context menu.
