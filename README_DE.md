@@ -7,7 +7,7 @@
 
 **ARX** (Archive eXtractor) ist ein moderner, leistungsstarker und benutzerfreundlicher Archiv-Manager für Linux. Er vereint `tar`, `zip`, `7z`, `zstd` und `xz` unter einer einzigen, intuitiven Oberfläche. Schluss mit dem Auswendiglernen komplexer Befehle wie `tar -czvf` oder `tar -xzvf` – ARX erledigt alles mit intelligenten Standards und übersichtlicher Ausgabe.
 
-![ARX Demo](tutorials/svgs/ep01_intro.svg)
+![ARX Demo](svgs/ep01_intro.svg)
 
 ---
 
@@ -61,7 +61,7 @@ ARX funktioniert am besten mit diesen Tools:
 ### 1. Einfaches Komprimieren & Entpacken
 Komprimieren Sie Dateien einfach mit intelligenten Standards.
 
-![Basis-Nutzung](tutorials/svgs/ep02_basic.svg)
+![Basis-Nutzung](svgs/ep02_basic.svg)
 
 ```bash
 # Verzeichnis komprimieren (Standard: tar.gz)
@@ -74,7 +74,7 @@ arx backup.tar.gz
 ### 2. Format-Konvertierung
 Konvertieren Sie Archive von einem Format in ein anderes ohne manuelles Entpacken.
 
-![Konvertierung](tutorials/svgs/ep06_convert.svg)
+![Konvertierung](svgs/ep06_convert.svg)
 
 ```bash
 # Konvertiere zip zu tar.zst (Zstandard)
@@ -84,7 +84,7 @@ arx convert eingabe.zip to ausgabe.tar.zst
 ### 3. Erweiterte Optionen
 Nutzen Sie Ausschlüsse, Passwortschutz und parallele Verarbeitung.
 
-![Erweitert](tutorials/svgs/ep03_advanced.svg)
+![Erweitert](svgs/ep03_advanced.svg)
 
 ```bash
 # Dateien ausschließen und maximale Kompression nutzen
@@ -97,7 +97,7 @@ arx -c zip -p -n geheim sensible_daten/
 ### 4. Inkrementelle Backups
 Sparen Sie Platz, indem Sie nur geänderte Dateien sichern.
 
-![Inkrementell](tutorials/svgs/ep04_incremental.svg)
+![Inkrementell](svgs/ep04_incremental.svg)
 
 ```bash
 # Level 0 (Vollbackup)
@@ -206,7 +206,7 @@ Er verwendet `dialog` (falls installiert) oder ein textbasiertes Menü:
 3.  **Datei-Auswahl** (mit Pfadvervollständigung)
 4.  **Optionen** (Passwort, Splitting, etc.)
 
-![Interaktive Demo](tutorials/svgs/ep01_intro.svg)
+![Interaktive Demo](svgs/ep01_intro.svg)
 
 ### GUI-Integration
 ARX integriert sich direkt in das Kontextmenü Ihres Dateimanagers.
