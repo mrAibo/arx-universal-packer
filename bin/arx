@@ -842,7 +842,14 @@ HELPTEXT
         while IFS= read -r line; do
           [[ -n "$line" ]] && zip_files+=("$line")
         done < "$flist"
-        (cd "$base" && zip "${zip_opts[@]}" "$output_file" "${zip_files[@]}")
+        # Need absolute path for output since we cd to base
+        local output_abs
+        if command -v realpath >/dev/null 2>&1; then
+          output_abs=$(realpath -m "$output_file")
+        else
+          [[ "$output_file" == /* ]] && output_abs="$output_file" || output_abs="$PWD/$output_file"
+        fi
+        (cd "$base" && zip "${zip_opts[@]}" "$output_abs" "${zip_files[@]}")
         exit_code=$?
         ;;
       7z)
