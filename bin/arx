@@ -605,6 +605,8 @@ HELPTEXT
   tar_compress() {
     local t_fmt="$1" out="$2" base="$3" total_size="$4" flist="$5"
     local tar_ex=(); local pat
+    # ponytail: ensure pipefail so a tar failure in the pipeline isn't masked by gzip's success
+    set -o pipefail
     for pat in "${exclude_patterns[@]}"; do tar_ex+=( "--exclude=$pat" ); done
     
     if [[ -n "${incremental_snar:-}" ]]; then
@@ -729,7 +731,7 @@ HELPTEXT
         -e|--exclude)  exclude_patterns+=("${2:-}"); [[ -n "${exclude_patterns[-1]}" ]] || { log_error "Exclude pattern missing"; return 1; }; shift 2 ;;
         -i|--include)  include_patterns+=("${2:-}"); [[ -n "${include_patterns[-1]}" ]] || { log_error "Include pattern missing"; return 1; }; shift 2 ;;
         -f|--filter)   filter_file="${2:-}"; [[ -n "$filter_file" ]] || { log_error "Filter file missing"; return 1; }; shift 2 ;;
-        -j|--jobs)     jobs="${2:-}"; [[ -n "$jobs" ]] || { log_error "Number of jobs missing"; return 1; }; shift 2 ;;
+        -j|--jobs)     jobs="${2:-}"; jobs_set=true; [[ -n "$jobs" ]] || { log_error "Number of jobs missing"; return 1; }; shift 2 ;;
         -L|--level)    level="${2:-}"; level_set=true; [[ -n "$level" ]] || { log_error "Level missing"; return 1; }; shift 2 ;;
         -p|--password) log_warning "7z/zip only accept argv passwords"; read -rs -p "Password: " password; printf "\n"; [[ -n "$password" ]] || { log_error "Password must not be empty"; return 1; }; shift ;;
         --allow-insecure-password) allow_insecure_password=true; shift ;;
@@ -747,6 +749,9 @@ HELPTEXT
         *)             input_files+=("$1"); shift ;;
       esac
     done
+    if [[ -n "${jobs_set:-}" ]]; then
+      [[ "$jobs" =~ ^[0-9]+$ && "$jobs" -ge 1 ]] || { log_error "Number of jobs must be a positive integer"; return 1; }
+    fi
     if [[ "$mode" == "compress" && -z "$compress_format" ]]; then log_error "No compression format specified. Example: arx -c tar.gz -n archive file.txt"; return 1; fi
     return 0
   }
@@ -821,12 +826,6 @@ HELPTEXT
       return 0
     fi
 
-    if [[ -n "$password" && "$allow_insecure_password" != "true" ]]; then
-      log_error "Password in 7z/zip is visible via argv; use --allow-insecure-password"
-      [[ "${quiet:-false}" != "true" ]] && printf "%b\n" "${DIM}Safer: Use arx without password flag for interactive input${NC}" >&2
-      return 1
-    fi
-
     case "$compress_format" in
       tar|tar.gz|tar.bz2|tar.xz|tar.zst)
         tar_compress "$compress_format" "$output_file" "$base" "$total_size" "$flist"
@@ -836,7 +835,7 @@ HELPTEXT
         local zip_opts=(-r)
         [[ "$verbose" != "true" ]] && zip_opts+=("-q")
         if [[ "$level" =~ ^[0-9]$ ]]; then zip_opts+=("-${level}"); fi
-        if [[ -n "$password" ]]; then log_warning "ZIP password visible"; zip_opts+=("-P" "$password"); fi
+        if [[ -n "$password" ]]; then zip_opts+=("-P" "$password"); fi
         # Read filelist and pass as arguments
         local -a zip_files=()
         while IFS= read -r line; do
@@ -856,7 +855,7 @@ HELPTEXT
         local sz=(a)
         [[ "$verbose" != "true" ]] && sz+=("-bb0" "-bd")
         if [[ "$level" =~ ^[0-9]$ ]]; then sz+=("-mx=${level}"); fi
-        if [[ -n "$password" ]]; then log_warning "7z password visible"; sz+=("-p${password}" "-mhe=on"); fi
+        if [[ -n "$password" ]]; then sz+=("-p${password}" "-mhe=on"); fi
         # Use @listfile
         (cd "$base" && 7z "${sz[@]}" "$output_file" "@$flist")
         exit_code=$?
