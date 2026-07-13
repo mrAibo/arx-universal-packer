@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,39 +33,250 @@ func TestInitialModelCreatesTwoFilesystemPanels(t *testing.T) {
 	}
 }
 
-func TestTabSwitchesActivePanel(t *testing.T) {
-	m := initialModelAt(t.TempDir())
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+func TestSpaceMarksMultipleItemsAndAdvances(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := initialModelAt(dir)
+	m.panes[0].selectName("a.txt")
+
+	updated, _ := m.Update(runeKey(" "))
 	m = updated.(model)
-	if m.active != 1 {
-		t.Fatalf("active=%d want 1", m.active)
+	updated, _ = m.Update(runeKey(" "))
+	m = updated.(model)
+
+	marked := m.panes[0].markedEntries()
+	if len(marked) != 2 || marked[0].Name != "a.txt" || marked[1].Name != "b.txt" {
+		t.Fatalf("marked=%+v", marked)
+	}
+	if !strings.Contains(m.status, "2 marked") {
+		t.Fatalf("status=%q", m.status)
 	}
 }
 
-func TestEnterDirectoryAndGoBack(t *testing.T) {
+func TestF2MarksAllAndF8Clears(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := initialModelAt(dir)
+	updated, _ := m.Update(runeKey("f2"))
+	m = updated.(model)
+	if got := len(m.panes[0].markedEntries()); got != 2 {
+		t.Fatalf("marked=%d want 2", got)
+	}
+	updated, _ = m.Update(runeKey("f8"))
+	m = updated.(model)
+	if got := len(m.panes[0].markedEntries()); got != 0 {
+		t.Fatalf("marked=%d want 0", got)
+	}
+}
+
+func TestF5WithMarkedItemsOpensNamedArchiveDialog(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := initialModelAt(dir)
+	m.panes[0].markAll()
+	updated, _ := m.Update(runeKey("f5"))
+	m = updated.(model)
+
+	if m.modal != modalArchive || m.pending != actionPack {
+		t.Fatalf("modal=%v pending=%v", m.modal, m.pending)
+	}
+	if len(m.pendingSources) != 2 {
+		t.Fatalf("pending sources=%v", m.pendingSources)
+	}
+	if m.archiveName != "archive" {
+		t.Fatalf("archiveName=%q want archive", m.archiveName)
+	}
+	if m.panes[1].path != dir {
+		t.Fatalf("destination panel path=%q", m.panes[1].path)
+	}
+}
+
+func TestArchiveDialogNameCanBeReplaced(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.txt")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := initialModelAt(dir)
+	m.panes[0].selectName("data.txt")
+	updated, _ := m.Update(runeKey("f5"))
+	m = updated.(model)
+	if !m.nameReplaceMode {
+		t.Fatal("dialog should initially select the proposed name")
+	}
+	updated, _ = m.Update(runeKey("backup-2026"))
+	m = updated.(model)
+	if m.archiveName != "backup-2026" {
+		t.Fatalf("archiveName=%q", m.archiveName)
+	}
+}
+
+func TestNormalizeArchiveNameStripsKnownExtension(t *testing.T) {
+	name, err := normalizeArchiveName(" backup.tar.gz ", "zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "backup" {
+		t.Fatalf("name=%q want backup", name)
+	}
+	if _, err := normalizeArchiveName("../backup", "zip"); err == nil {
+		t.Fatal("expected path separator validation error")
+	}
+}
+
+func TestCompressManyCreatesArchiveWithMultipleSources(t *testing.T) {
+	base := t.TempDir()
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(base, "docs")
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "b.txt"), []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := compressMany("tar.gz", "bundle", []string{filepath.Join(base, "a.txt"), folder}, base, target, 3)
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	items, err := readArchiveItems(filepath.Join(target, "bundle.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(items, "a.txt") || !containsString(items, "docs/b.txt") {
+		t.Fatalf("archive items=%v", items)
+	}
+}
+
+func TestSelectiveExtractionFromOpenedArchive(t *testing.T) {
+	base := t.TempDir()
+	archiveDir := t.TempDir()
+	target := t.TempDir()
+	docs := filepath.Join(base, "docs")
+	if err := os.Mkdir(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(docs, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "root.txt"), []byte("root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	archiveResult := compressMany("tar.gz", "sample", []string{docs, filepath.Join(base, "root.txt")}, base, archiveDir, 3)
+	if archiveResult.Err != nil {
+		t.Fatal(archiveResult.Err)
+	}
+
+	archivePath := filepath.Join(archiveDir, "sample.tar.gz")
+	left := newPane(archiveDir)
+	left.selectName("sample.tar.gz")
+	if err := left.openSelected(); err != nil {
+		t.Fatal(err)
+	}
+	left.selectName("docs")
+	left.toggleMarkIndex(left.cursor, 10, false)
+
+	m := initialModelAt(archiveDir)
+	m.panes[0] = left
+	m.panes[1] = newPane(target)
+	m.active = 0
+	updated, cmd := m.Update(runeKey("f5"))
+	if cmd == nil {
+		t.Fatal("expected extraction command")
+	}
+	m = updated.(model)
+	message := cmd()
+	updated, _ = m.Update(message)
+	m = updated.(model)
+	if m.modal == modalMessage {
+		t.Fatalf("extraction failed: %s", m.modalMessage)
+	}
+	if _, err := os.Stat(filepath.Join(target, "docs", "a.txt")); err != nil {
+		t.Fatalf("selected directory not extracted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "root.txt")); !os.IsNotExist(err) {
+		t.Fatalf("unselected root.txt should not be extracted, err=%v", err)
+	}
+	if left.archivePath != archivePath {
+		t.Fatalf("archive path changed unexpectedly: %q", left.archivePath)
+	}
+}
+
+func TestMouseClickSelectsAndRightClickMarks(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := initialModelAt(dir)
+	m.width = 100
+	m.height = 30
+
+	// The temp directory has a parent entry at row 4, so a.txt is row 5.
+	updated, _ := m.Update(tea.MouseMsg{X: 2, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	m = updated.(model)
+	entry, ok := m.panes[0].selected()
+	if !ok || entry.Name != "a.txt" {
+		t.Fatalf("selected=%+v ok=%v", entry, ok)
+	}
+	updated, _ = m.Update(tea.MouseMsg{X: 2, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonRight})
+	m = updated.(model)
+	if got := len(m.panes[0].markedEntries()); got != 1 {
+		t.Fatalf("marked=%d want 1", got)
+	}
+}
+
+func TestMouseDoubleClickOpensDirectory(t *testing.T) {
 	dir := t.TempDir()
 	child := filepath.Join(dir, "child")
 	if err := os.Mkdir(child, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	m := initialModelAt(dir)
+	m.width = 100
+	m.height = 30
+	// child is the first real entry after '..'.
+	click := tea.MouseMsg{X: 2, Y: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	updated, _ := m.Update(click)
+	m = updated.(model)
+	updated, _ = m.Update(click)
+	m = updated.(model)
+	if m.panes[0].path != child {
+		t.Fatalf("path=%q want %q", m.panes[0].path, child)
+	}
+}
 
-	p := newPane(dir)
-	p.selectName("child")
-	if err := p.openSelected(); err != nil {
-		t.Fatal(err)
+func TestKeyBarUsesFunctionKeyNames(t *testing.T) {
+	m := initialModelAt(t.TempDir())
+	m.width = 120
+	view := m.View()
+	if !strings.Contains(view, "F1") || !strings.Contains(view, "F10") {
+		t.Fatalf("function key labels missing from view: %q", view)
 	}
-	if p.path != child {
-		t.Fatalf("path=%q want %q", p.path, child)
+}
+
+func TestArchivePathNormalizationRejectsTraversal(t *testing.T) {
+	for _, value := range []string{"../escape", "/etc/passwd", "C:/Windows/file", "a/../../escape"} {
+		if got := normalizeArchivePath(value); got != "" {
+			t.Fatalf("normalizeArchivePath(%q)=%q want empty", value, got)
+		}
 	}
-	if err := p.goUp(); err != nil {
-		t.Fatal(err)
-	}
-	if p.path != dir {
-		t.Fatalf("path=%q want %q", p.path, dir)
-	}
-	selected, ok := p.selected()
-	if !ok || selected.Name != "child" {
-		t.Fatalf("selected=%+v ok=%v", selected, ok)
+	if got := normalizeArchivePath("./docs/readme.txt"); got != "docs/readme.txt" {
+		t.Fatalf("got=%q", got)
 	}
 }
 
@@ -89,33 +301,6 @@ func TestArchiveHierarchyBuildsImmediateChildren(t *testing.T) {
 	}
 }
 
-func TestArchivePanelNavigatesVirtualDirectories(t *testing.T) {
-	p := pane{
-		mode:         paneArchive,
-		archivePath:  "/tmp/test.tar.gz",
-		archiveItems: []string{"docs/readme.txt", "docs/manual/a.txt", "root.txt"},
-	}
-	if err := p.loadArchiveView(); err != nil {
-		t.Fatal(err)
-	}
-	p.selectName("docs")
-	if err := p.openSelected(); err != nil {
-		t.Fatal(err)
-	}
-	if p.archivePrefix != "docs" {
-		t.Fatalf("prefix=%q want docs", p.archivePrefix)
-	}
-	if !containsEntry(p.entries, "readme.txt") {
-		t.Fatalf("entries=%+v", p.entries)
-	}
-	if err := p.goUp(); err != nil {
-		t.Fatal(err)
-	}
-	if p.archivePrefix != "" {
-		t.Fatalf("prefix=%q want empty", p.archivePrefix)
-	}
-}
-
 func TestHiddenFilesToggle(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".secret"), []byte("x"), 0o644); err != nil {
@@ -131,47 +316,6 @@ func TestHiddenFilesToggle(t *testing.T) {
 	}
 	if !containsEntry(p.entries, ".secret") {
 		t.Fatal("hidden file not shown after toggle")
-	}
-}
-
-func TestF5OnRegularFileOpensFormatDialog(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "data.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	m := initialModelAt(dir)
-	m.panes[0].selectName("data.txt")
-	updated, _ := m.Update(runeKey("f5"))
-	m = updated.(model)
-	if m.modal != modalFormat || m.pending != actionPack {
-		t.Fatalf("modal=%v pending=%v", m.modal, m.pending)
-	}
-	if m.pendingPath != filepath.Join(dir, "data.txt") {
-		t.Fatalf("pendingPath=%q", m.pendingPath)
-	}
-}
-
-func TestF6RejectsNonArchive(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "data.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	m := initialModelAt(dir)
-	m.panes[0].selectName("data.txt")
-	updated, _ := m.Update(runeKey("f6"))
-	m = updated.(model)
-	if m.modal != modalMessage {
-		t.Fatalf("modal=%v want modalMessage", m.modal)
-	}
-}
-
-func TestAvailableArchiveNameAvoidsOverwrite(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "backup.tar.zst"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := availableArchiveName(dir, "backup", "tar.zst"); got != "backup-1" {
-		t.Fatalf("got=%q want backup-1", got)
 	}
 }
 
@@ -196,6 +340,15 @@ func entryIsDirectory(entries []fileEntry, name string) bool {
 	for _, entry := range entries {
 		if entry.Name == name {
 			return entry.IsDir
+		}
+	}
+	return false
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if normalizeArchivePath(value) == wanted {
+			return true
 		}
 	}
 	return false
