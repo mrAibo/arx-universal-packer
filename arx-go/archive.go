@@ -37,7 +37,7 @@ func runCapture(name string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// DetectFormat infers the archive format from the file extension.
+// DetectFormat infers an output format from the file extension.
 func DetectFormat(path string) string {
 	switch {
 	case strings.HasSuffix(path, ".tar.gz"), strings.HasSuffix(path, ".tgz"):
@@ -153,7 +153,7 @@ func extract(path, targetDir string) Result {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return Result{Err: err}
 	}
-	format := DetectFormat(src)
+	format := DetectArchiveFormat(src)
 	var cmdErr error
 	switch f := format; f {
 	case "tar":
@@ -190,7 +190,7 @@ func list(path string) Result {
 	if err != nil {
 		return Result{Err: err}
 	}
-	format := DetectFormat(src)
+	format := DetectArchiveFormat(src)
 	var out string
 	switch f := format; f {
 	case "tar":

@@ -204,7 +204,7 @@ func extractSelected(archivePath string, members []string, targetDir string) Res
 		return Result{Err: fmt.Errorf("archive has no safe extractable entries")}
 	}
 
-	format := DetectFormat(strings.ToLower(source))
+	format := DetectArchiveFormat(source)
 	var cmdErr error
 	switch format {
 	case "tar", "tar.gz", "tar.bz2", "tar.xz", "tar.zst":
@@ -294,7 +294,7 @@ func writeListFile(values []string) (string, error) {
 }
 
 func testArchive(path string) Result {
-	format := DetectFormat(strings.ToLower(path))
+	format := DetectArchiveFormat(path)
 	var output string
 	var err error
 	switch format {
