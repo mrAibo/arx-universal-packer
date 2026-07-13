@@ -333,7 +333,7 @@ func rebuildArchive(archivePath string, level int, mutate func(string) error) Re
 	if err != nil {
 		return Result{Err: err}
 	}
-	format := DetectFormat(strings.ToLower(archive))
+	format := DetectArchiveFormat(archive)
 	if format == "unknown" {
 		return Result{Err: fmt.Errorf("unsupported archive format: %s", archivePath)}
 	}

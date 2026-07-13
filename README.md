@@ -15,6 +15,7 @@
 
 ### 🚀 Core Capabilities
 - **Unified Interface**: One command for all formats (`tar`, `gz`, `bz2`, `xz`, `zst`, `zip`, `7z`).
+- **Automatic Detection**: Existing archives are recognized by file signature, even when their extension is missing or misleading.
 - **Smart Extraction**: Auto-detects formats and handles "tarbombs" (archives without a root folder).
 - **Format Conversion**: Easily convert archives (e.g., `zip` → `tar.zst`) with `arx convert`.
 - **Incremental Backups**: Create snapshot-based differential backups to save space.

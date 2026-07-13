@@ -101,15 +101,15 @@ func (p *pane) loadDirectory() error {
 		}
 		info, infoErr := item.Info()
 		entry := fileEntry{
-			Name:      item.Name(),
-			Path:      filepath.Join(p.path, item.Name()),
-			IsDir:     item.IsDir(),
-			IsArchive: !item.IsDir() && DetectFormat(strings.ToLower(item.Name())) != "unknown",
-			Size:      -1,
+			Name:  item.Name(),
+			Path:  filepath.Join(p.path, item.Name()),
+			IsDir: item.IsDir(),
+			Size:  -1,
 		}
 		if infoErr == nil {
 			entry.Size = info.Size()
 			entry.ModTime = info.ModTime()
+			entry.IsArchive = info.Mode().IsRegular() && DetectArchiveFormat(entry.Path) != "unknown"
 		}
 		entries = append(entries, entry)
 	}
@@ -523,7 +523,7 @@ func sortEntries(entries []fileEntry) {
 }
 
 func readArchiveItems(path string) ([]string, error) {
-	format := DetectFormat(strings.ToLower(path))
+	format := DetectArchiveFormat(path)
 	var output string
 	var err error
 
