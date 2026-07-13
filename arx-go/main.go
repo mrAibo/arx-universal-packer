@@ -89,6 +89,8 @@ const (
 	modalHelp
 	modalArchive
 	modalMessage
+	modalViewer
+	modalConfirm
 )
 
 type pendingAction int
@@ -132,6 +134,14 @@ type model struct {
 	dialogField     int
 	dialogError     string
 	nameReplaceMode bool
+
+	viewerLines  []string
+	viewerOffset int
+	viewerColumn int
+
+	confirm        confirmKind
+	confirmArchive string
+	confirmEntries []fileEntry
 
 	lastClickPanel int
 	lastClickIndex int
@@ -190,6 +200,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.MouseMsg:
+		if m.modal == modalViewer {
+			return m.updateViewerMouse(msg)
+		}
 		if m.modal != modalNone || m.busy {
 			return m, nil
 		}
@@ -245,7 +258,7 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "*":
 		active.invertMarks()
 		m.status = active.markSummary()
-	case "f8", "ctrl+u":
+	case "ctrl+u":
 		active.clearMarks()
 		m.status = "Marks cleared"
 	case "enter", "right":
@@ -264,7 +277,7 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modal = modalHelp
 		m.modalTitle = "ARX Commander help"
 	case "f3":
-		m.status = active.selectedDescription()
+		return m.startViewer()
 	case "f4":
 		return m.startArchiveTest()
 	case "f5":
@@ -277,6 +290,8 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "Directory created"
 		}
+	case "f8":
+		return m.startArchiveDelete()
 	case "f9", ".":
 		active.showHidden = !active.showHidden
 		if err := active.reload(); err != nil {
@@ -386,6 +401,10 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case modalArchive:
 		return m.updateArchiveDialog(msg)
+	case modalViewer:
+		return m.updateViewer(msg)
+	case modalConfirm:
+		return m.updateConfirm(msg)
 	default:
 		return m, nil
 	}
@@ -523,6 +542,12 @@ func (m *model) closeModal() {
 	m.dialogError = ""
 	m.dialogField = dialogName
 	m.nameReplaceMode = false
+	m.viewerLines = nil
+	m.viewerOffset = 0
+	m.viewerColumn = 0
+	m.confirm = confirmNone
+	m.confirmArchive = ""
+	m.confirmEntries = nil
 }
 
 func (m *model) showError(err error) {
@@ -535,10 +560,6 @@ func (m *model) showError(err error) {
 func (m model) startF5() (tea.Model, tea.Cmd) {
 	active := m.panes[m.active]
 	passive := m.panes[1-m.active]
-	if passive.mode != paneFilesystem {
-		m.showError(fmt.Errorf("destination panel must show a filesystem directory"))
-		return m, nil
-	}
 
 	entries, err := active.operationEntries()
 	if err != nil {
@@ -547,6 +568,10 @@ func (m model) startF5() (tea.Model, tea.Cmd) {
 	}
 
 	if active.mode == paneArchive {
+		if passive.mode != paneFilesystem {
+			m.showError(fmt.Errorf("destination panel must show a filesystem directory"))
+			return m, nil
+		}
 		members := archiveMembersForEntries(active.archiveItems, entries)
 		if len(members) == 0 {
 			m.showError(fmt.Errorf("selected archive entries could not be resolved"))
@@ -555,6 +580,20 @@ func (m model) startF5() (tea.Model, tea.Cmd) {
 		return m.startOperation(fmt.Sprintf("Extracting %d selected item(s)...", len(entries)), func() Result {
 			return extractSelected(active.archivePath, members, passive.path)
 		})
+	}
+
+	if passive.mode == paneArchive {
+		sources := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			sources = append(sources, entry.Path)
+		}
+		return m.startOperation(fmt.Sprintf("Adding %d selected item(s) to archive...", len(entries)), func() Result {
+			return addToArchive(passive.archivePath, passive.archivePrefix, sources, active.path, defaultLevel)
+		})
+	}
+	if passive.mode != paneFilesystem {
+		m.showError(fmt.Errorf("destination panel must show a filesystem directory or an opened archive"))
+		return m, nil
 	}
 
 	marked := active.markedEntries()
@@ -642,7 +681,7 @@ func (m model) startOperation(status string, fn func() Result) (tea.Model, tea.C
 
 func (m *model) reloadPanes() {
 	for i := range m.panes {
-		if err := m.panes[i].reload(); err != nil {
+		if err := m.panes[i].refresh(); err != nil {
 			m.panes[i].err = err.Error()
 		}
 	}
