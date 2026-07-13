@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -36,6 +37,7 @@ type pane struct {
 	cursor        int
 	offset        int
 	showHidden    bool
+	marked        map[string]struct{}
 	err           string
 }
 
@@ -44,11 +46,21 @@ func newPane(path string) pane {
 	if err != nil {
 		absolute = path
 	}
-	p := pane{mode: paneFilesystem, path: absolute}
+	p := pane{
+		mode:   paneFilesystem,
+		path:   absolute,
+		marked: make(map[string]struct{}),
+	}
 	if err := p.reload(); err != nil {
 		p.err = err.Error()
 	}
 	return p
+}
+
+func (p *pane) ensureMarkedMap() {
+	if p.marked == nil {
+		p.marked = make(map[string]struct{})
+	}
 }
 
 func (p *pane) reload() error {
@@ -69,6 +81,7 @@ func (p *pane) reload() error {
 	}
 	p.err = ""
 	p.selectName(selectedName)
+	p.pruneMarks()
 	return nil
 }
 
@@ -104,6 +117,7 @@ func (p *pane) loadDirectory() error {
 	sortEntries(entries)
 	p.entries = entries
 	p.clampCursor()
+	p.pruneMarks()
 	return nil
 }
 
@@ -112,6 +126,7 @@ func (p *pane) loadArchive(path string) error {
 	if err != nil {
 		return err
 	}
+	p.clearMarks()
 	p.mode = paneArchive
 	p.archivePath = path
 	p.archivePrefix = ""
@@ -134,6 +149,7 @@ func (p *pane) loadArchiveView() error {
 	entries := buildArchiveEntries(p.archiveItems, p.archivePrefix)
 	p.entries = append([]fileEntry{{Name: "..", IsDir: true, Size: -1}}, entries...)
 	p.clampCursor()
+	p.pruneMarks()
 	return nil
 }
 
@@ -207,6 +223,7 @@ func (p *pane) openSelected() error {
 		if !entry.IsDir {
 			return nil
 		}
+		p.clearMarks()
 		p.archivePrefix = joinArchivePrefix(p.archivePrefix, entry.Name)
 		p.cursor = 0
 		p.offset = 0
@@ -214,6 +231,7 @@ func (p *pane) openSelected() error {
 	}
 
 	if entry.IsDir {
+		p.clearMarks()
 		p.path = entry.Path
 		p.cursor = 0
 		p.offset = 0
@@ -226,6 +244,7 @@ func (p *pane) openSelected() error {
 }
 
 func (p *pane) goUp() error {
+	p.clearMarks()
 	if p.mode == paneArchive {
 		if p.archivePrefix != "" {
 			old := archiveBase(p.archivePrefix)
@@ -329,6 +348,15 @@ func (p *pane) selectName(name string) {
 	p.clampCursor()
 }
 
+func (p *pane) selectIndex(index, rows int) bool {
+	if index < 0 || index >= len(p.entries) {
+		return false
+	}
+	p.cursor = index
+	p.ensureVisible(rows)
+	return true
+}
+
 func (p *pane) clampCursor() {
 	if len(p.entries) == 0 {
 		p.cursor = 0
@@ -341,6 +369,142 @@ func (p *pane) clampCursor() {
 	if p.cursor >= len(p.entries) {
 		p.cursor = len(p.entries) - 1
 	}
+}
+
+func (p pane) markKey(entry fileEntry) string {
+	return entry.Path
+}
+
+func (p pane) isMarked(entry fileEntry) bool {
+	if entry.Name == ".." || p.marked == nil {
+		return false
+	}
+	_, ok := p.marked[p.markKey(entry)]
+	return ok
+}
+
+func (p *pane) toggleMark(rows int) {
+	p.toggleMarkIndex(p.cursor, rows, true)
+}
+
+func (p *pane) toggleMarkIndex(index, rows int, advance bool) {
+	if index < 0 || index >= len(p.entries) {
+		return
+	}
+	entry := p.entries[index]
+	if entry.Name == ".." {
+		return
+	}
+	p.ensureMarkedMap()
+	key := p.markKey(entry)
+	if _, ok := p.marked[key]; ok {
+		delete(p.marked, key)
+	} else {
+		p.marked[key] = struct{}{}
+	}
+	p.cursor = index
+	if advance && p.cursor < len(p.entries)-1 {
+		p.cursor++
+	}
+	p.ensureVisible(rows)
+}
+
+func (p *pane) markAll() {
+	p.ensureMarkedMap()
+	for _, entry := range p.entries {
+		if entry.Name != ".." {
+			p.marked[p.markKey(entry)] = struct{}{}
+		}
+	}
+}
+
+func (p *pane) invertMarks() {
+	p.ensureMarkedMap()
+	for _, entry := range p.entries {
+		if entry.Name == ".." {
+			continue
+		}
+		key := p.markKey(entry)
+		if _, ok := p.marked[key]; ok {
+			delete(p.marked, key)
+		} else {
+			p.marked[key] = struct{}{}
+		}
+	}
+}
+
+func (p *pane) clearMarks() {
+	p.marked = make(map[string]struct{})
+}
+
+func (p *pane) pruneMarks() {
+	p.ensureMarkedMap()
+	visible := make(map[string]struct{}, len(p.entries))
+	for _, entry := range p.entries {
+		if entry.Name != ".." {
+			visible[p.markKey(entry)] = struct{}{}
+		}
+	}
+	for key := range p.marked {
+		if _, ok := visible[key]; !ok {
+			delete(p.marked, key)
+		}
+	}
+}
+
+func (p pane) markedEntries() []fileEntry {
+	if len(p.marked) == 0 {
+		return nil
+	}
+	entries := make([]fileEntry, 0, len(p.marked))
+	for _, entry := range p.entries {
+		if p.isMarked(entry) {
+			entries = append(entries, entry)
+		}
+	}
+	return entries
+}
+
+func (p pane) operationEntries() ([]fileEntry, error) {
+	if entries := p.markedEntries(); len(entries) > 0 {
+		return entries, nil
+	}
+	entry, ok := p.selected()
+	if !ok || entry.Name == ".." {
+		return nil, fmt.Errorf("select or mark at least one file or directory")
+	}
+	return []fileEntry{entry}, nil
+}
+
+func (p pane) markSummary() string {
+	entries := p.markedEntries()
+	if len(entries) == 0 {
+		return "No marked items"
+	}
+	files := 0
+	dirs := 0
+	var bytes int64
+	for _, entry := range entries {
+		if entry.IsDir {
+			dirs++
+		} else {
+			files++
+			if entry.Size > 0 {
+				bytes += entry.Size
+			}
+		}
+	}
+	parts := []string{fmt.Sprintf("%d marked", len(entries))}
+	if files > 0 {
+		parts = append(parts, fmt.Sprintf("%d files", files))
+	}
+	if dirs > 0 {
+		parts = append(parts, fmt.Sprintf("%d dirs", dirs))
+	}
+	if bytes > 0 {
+		parts = append(parts, formatSize(bytes))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func sortEntries(entries []fileEntry) {
@@ -398,10 +562,16 @@ func parseArchiveLines(output string) []string {
 	var paths []string
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
-		value := normalizeArchivePath(scanner.Text())
-		if value != "" {
-			paths = append(paths, value)
+		raw := scanner.Text()
+		isDir := strings.HasSuffix(strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/"), "/")
+		value := normalizeArchivePath(raw)
+		if value == "" {
+			continue
 		}
+		if isDir {
+			value += "/"
+		}
+		paths = append(paths, value)
 	}
 	return paths
 }
@@ -496,10 +666,70 @@ func buildArchiveEntries(paths []string, prefix string) []fileEntry {
 	return entries
 }
 
-func normalizeArchivePath(path string) string {
-	path = strings.ReplaceAll(strings.TrimSpace(path), "\\", "/")
-	path = strings.TrimPrefix(path, "./")
-	return strings.Trim(path, "/")
+func archiveMembersForEntries(all []string, selected []fileEntry) []string {
+	seen := make(map[string]struct{})
+	members := make([]string, 0)
+
+	add := func(member string) {
+		member = normalizeArchivePath(member)
+		if member == "" {
+			return
+		}
+		if _, ok := seen[member]; ok {
+			return
+		}
+		seen[member] = struct{}{}
+		members = append(members, member)
+	}
+
+	for _, entry := range selected {
+		selection := normalizeArchivePath(entry.Path)
+		if selection == "" {
+			continue
+		}
+		if !entry.IsDir {
+			add(selection)
+			continue
+		}
+
+		foundDescendant := false
+		for _, original := range all {
+			member := normalizeArchivePath(original)
+			if strings.HasPrefix(member, selection+"/") {
+				add(member)
+				foundDescendant = true
+			}
+		}
+		if !foundDescendant {
+			add(selection)
+		}
+	}
+
+	sort.Strings(members)
+	return members
+}
+
+func normalizeArchivePath(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
+	if value == "" || strings.ContainsRune(value, '\x00') {
+		return ""
+	}
+	if strings.HasPrefix(value, "/") || hasWindowsVolumePrefix(value) {
+		return ""
+	}
+	for strings.HasPrefix(value, "./") {
+		value = strings.TrimPrefix(value, "./")
+	}
+	value = strings.TrimSuffix(value, "/")
+	cleaned := pathpkg.Clean(value)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return ""
+	}
+	return strings.Trim(cleaned, "/")
+}
+
+func hasWindowsVolumePrefix(value string) bool {
+	return len(value) >= 2 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':'
 }
 
 func normalizeArchivePrefix(prefix string) string {

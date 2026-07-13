@@ -4,12 +4,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-const defaultArchiveFormat = "tar.zst"
+const (
+	defaultArchiveFormat = "tar.zst"
+	defaultLevel         = 3
+	doubleClickWindow    = 450 * time.Millisecond
+)
 
 var archiveFormats = []string{"tar.zst", "tar.gz", "tar.xz", "tar.bz2", "zip", "7z", "tar"}
 
@@ -35,6 +41,11 @@ var (
 		Background(lipgloss.Color("39")).
 		Foreground(lipgloss.Color("231"))
 
+	markedStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("58")).
+		Foreground(lipgloss.Color("229")).
+		Bold(true)
+
 	directoryStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("45")).
 		Bold(true)
@@ -59,6 +70,16 @@ var (
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("39")).
 		Padding(1, 2)
+
+	fieldStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1)
+
+	activeFieldStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(0, 1)
 )
 
 type modalKind int
@@ -66,7 +87,7 @@ type modalKind int
 const (
 	modalNone modalKind = iota
 	modalHelp
-	modalFormat
+	modalArchive
 	modalMessage
 )
 
@@ -78,23 +99,43 @@ const (
 	actionConvert
 )
 
+const (
+	dialogName = iota
+	dialogFormat
+	dialogLevel
+	dialogCreate
+	dialogFieldCount
+)
+
 type operationMsg struct {
 	result Result
 }
 
 type model struct {
-	panes        [2]pane
-	active       int
-	width        int
-	height       int
-	status       string
-	busy         bool
+	panes  [2]pane
+	active int
+	width  int
+	height int
+	status string
+	busy   bool
+
 	modal        modalKind
 	modalTitle   string
 	modalMessage string
-	formatCursor int
-	pending      pendingAction
-	pendingPath  string
+
+	pending         pendingAction
+	pendingSources  []string
+	pendingBaseDir  string
+	archiveName     string
+	formatCursor    int
+	compression     int
+	dialogField     int
+	dialogError     string
+	nameReplaceMode bool
+
+	lastClickPanel int
+	lastClickIndex int
+	lastClickAt    time.Time
 }
 
 func initialModel() model {
@@ -109,11 +150,14 @@ func initialModelAt(path string) model {
 	left := newPane(path)
 	right := newPane(path)
 	m := model{
-		panes:  [2]pane{left, right},
-		active: 0,
-		width:  100,
-		height: 30,
-		status: "Ready",
+		panes:          [2]pane{left, right},
+		active:         0,
+		width:          100,
+		height:         30,
+		status:         "Ready",
+		compression:    defaultLevel,
+		lastClickPanel: -1,
+		lastClickIndex: -1,
 	}
 	if left.err != "" {
 		m.status = left.err
@@ -139,9 +183,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.result.Err.Error()
 		} else {
 			m.status = msg.result.Output
+			for i := range m.panes {
+				m.panes[i].clearMarks()
+			}
 			m.reloadPanes()
 		}
 		return m, nil
+	case tea.MouseMsg:
+		if m.modal != modalNone || m.busy {
+			return m, nil
+		}
+		return m.updateMouse(msg)
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" || msg.String() == "f10" {
 			return m, tea.Quit
@@ -167,6 +219,7 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "tab":
 		m.active = 1 - m.active
+		m.status = m.panes[m.active].location()
 	case "up", "k":
 		active.move(-1, rows)
 	case "down", "j":
@@ -183,6 +236,18 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			active.cursor = len(active.entries) - 1
 			active.ensureVisible(rows)
 		}
+	case " ", "space", "insert":
+		active.toggleMark(rows)
+		m.status = active.markSummary()
+	case "f2", "ctrl+a":
+		active.markAll()
+		m.status = active.markSummary()
+	case "*":
+		active.invertMarks()
+		m.status = active.markSummary()
+	case "f8", "ctrl+u":
+		active.clearMarks()
+		m.status = "Marks cleared"
 	case "enter", "right":
 		if err := active.openSelected(); err != nil {
 			m.showError(err)
@@ -200,6 +265,8 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.modalTitle = "ARX Commander help"
 	case "f3":
 		m.status = active.selectedDescription()
+	case "f4":
+		return m.startArchiveTest()
 	case "f5":
 		return m.startF5()
 	case "f6":
@@ -228,6 +295,87 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	panel := m.panelAtX(msg.X)
+	if panel < 0 {
+		return m, nil
+	}
+	rows := m.panelRows()
+
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		m.active = panel
+		m.panes[panel].move(-3, rows)
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		m.active = panel
+		m.panes[panel].move(3, rows)
+		return m, nil
+	}
+
+	if msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+	index, ok := m.entryIndexAtY(panel, msg.Y)
+	if !ok {
+		m.active = panel
+		return m, nil
+	}
+
+	m.active = panel
+	active := &m.panes[panel]
+	active.selectIndex(index, rows)
+
+	switch msg.Button {
+	case tea.MouseButtonRight, tea.MouseButtonMiddle:
+		active.toggleMarkIndex(index, rows, false)
+		m.status = active.markSummary()
+	case tea.MouseButtonLeft:
+		now := time.Now()
+		doubleClick := m.lastClickPanel == panel && m.lastClickIndex == index && now.Sub(m.lastClickAt) <= doubleClickWindow
+		m.lastClickPanel = panel
+		m.lastClickIndex = index
+		m.lastClickAt = now
+		if doubleClick {
+			if err := active.openSelected(); err != nil {
+				m.showError(err)
+			} else {
+				m.status = active.location()
+			}
+		} else {
+			m.status = active.selectedDescription()
+		}
+	}
+	return m, nil
+}
+
+func (m model) panelAtX(x int) int {
+	width := m.width
+	if width < 60 {
+		width = 60
+	}
+	if x < 0 || x >= width {
+		return -1
+	}
+	leftWidth := (width - 1) / 2
+	if x < leftWidth {
+		return 0
+	}
+	return 1
+}
+
+func (m model) entryIndexAtY(panel, y int) (int, bool) {
+	row := y - 4
+	if row < 0 || row >= m.panelRows() {
+		return 0, false
+	}
+	index := m.panes[panel].offset + row
+	if index < 0 || index >= len(m.panes[panel].entries) {
+		return 0, false
+	}
+	return index, true
+}
+
 func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.modal {
 	case modalHelp, modalMessage:
@@ -236,24 +384,132 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.closeModal()
 		}
 		return m, nil
-	case modalFormat:
-		switch msg.String() {
-		case "esc", "q":
-			m.closeModal()
-			return m, nil
-		case "up", "k":
+	case modalArchive:
+		return m.updateArchiveDialog(msg)
+	default:
+		return m, nil
+	}
+}
+
+func (m model) updateArchiveDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.dialogError = ""
+	key := msg.String()
+
+	switch key {
+	case "esc":
+		m.closeModal()
+		return m, nil
+	case "tab":
+		m.nameReplaceMode = false
+		m.dialogField = (m.dialogField + 1) % dialogFieldCount
+		return m, nil
+	case "shift+tab":
+		m.nameReplaceMode = false
+		m.dialogField = wrapIndex(m.dialogField-1, dialogFieldCount)
+		return m, nil
+	case "f5":
+		return m.confirmArchiveDialog()
+	case "enter":
+		if m.dialogField == dialogCreate {
+			return m.confirmArchiveDialog()
+		}
+		m.nameReplaceMode = false
+		m.dialogField++
+		return m, nil
+	case "backspace":
+		if m.dialogField == dialogName {
+			if m.nameReplaceMode {
+				m.archiveName = ""
+				m.nameReplaceMode = false
+			} else {
+				runes := []rune(m.archiveName)
+				if len(runes) > 0 {
+					m.archiveName = string(runes[:len(runes)-1])
+				}
+			}
+		}
+		return m, nil
+	case "ctrl+u":
+		if m.dialogField == dialogName {
+			m.archiveName = ""
+			m.nameReplaceMode = false
+		}
+		return m, nil
+	case "up", "left":
+		switch m.dialogField {
+		case dialogFormat:
 			m.formatCursor = wrapIndex(m.formatCursor-1, len(archiveFormats))
-		case "down", "j":
+		case dialogLevel:
+			if m.compression > 1 {
+				m.compression--
+			}
+		}
+		return m, nil
+	case "down", "right":
+		switch m.dialogField {
+		case dialogFormat:
 			m.formatCursor = wrapIndex(m.formatCursor+1, len(archiveFormats))
-		case "enter":
-			format := archiveFormats[m.formatCursor]
-			action := m.pending
-			path := m.pendingPath
-			m.closeModal()
-			return m.runPending(action, path, format)
+		case dialogLevel:
+			if m.compression < 9 {
+				m.compression++
+			}
+		}
+		return m, nil
+	}
+
+	if msg.Type == tea.KeyRunes && m.dialogField == dialogName {
+		value := string(msg.Runes)
+		if m.nameReplaceMode {
+			m.archiveName = value
+			m.nameReplaceMode = false
+		} else {
+			m.archiveName += value
 		}
 	}
 	return m, nil
+}
+
+func (m model) confirmArchiveDialog() (tea.Model, tea.Cmd) {
+	if len(m.pendingSources) == 0 {
+		m.dialogError = "No source selected"
+		return m, nil
+	}
+	format := archiveFormats[m.formatCursor]
+	name, err := normalizeArchiveName(m.archiveName, format)
+	if err != nil {
+		m.dialogError = err.Error()
+		m.dialogField = dialogName
+		return m, nil
+	}
+	destination := m.panes[1-m.active].path
+	output := filepath.Join(destination, name+"."+format)
+	if _, err := os.Stat(output); err == nil {
+		m.dialogError = "Archive already exists; choose another name"
+		m.dialogField = dialogName
+		return m, nil
+	} else if !os.IsNotExist(err) {
+		m.dialogError = err.Error()
+		return m, nil
+	}
+
+	action := m.pending
+	sources := append([]string(nil), m.pendingSources...)
+	baseDir := m.pendingBaseDir
+	level := m.compression
+	m.closeModal()
+
+	switch action {
+	case actionPack:
+		return m.startOperation("Creating archive...", func() Result {
+			return compressMany(format, name, sources, baseDir, destination, level)
+		})
+	case actionConvert:
+		return m.startOperation("Converting archive...", func() Result {
+			return convertArchive(sources[0], output, level)
+		})
+	default:
+		return m, nil
+	}
 }
 
 func (m *model) closeModal() {
@@ -261,7 +517,12 @@ func (m *model) closeModal() {
 	m.modalTitle = ""
 	m.modalMessage = ""
 	m.pending = actionNone
-	m.pendingPath = ""
+	m.pendingSources = nil
+	m.pendingBaseDir = ""
+	m.archiveName = ""
+	m.dialogError = ""
+	m.dialogField = dialogName
+	m.nameReplaceMode = false
 }
 
 func (m *model) showError(err error) {
@@ -279,28 +540,40 @@ func (m model) startF5() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	entry, ok := active.selected()
-	if active.mode == paneArchive {
-		return m.startOperation("Extracting archive...", func() Result {
-			return extract(active.archivePath, passive.path)
-		})
-	}
-	if !ok || entry.Name == ".." {
-		m.showError(fmt.Errorf("select a file, directory, or archive first"))
+	entries, err := active.operationEntries()
+	if err != nil {
+		m.showError(err)
 		return m, nil
 	}
-	if entry.IsArchive && !entry.IsDir {
-		return m.startOperation("Extracting archive...", func() Result {
-			return extract(entry.Path, passive.path)
+
+	if active.mode == paneArchive {
+		members := archiveMembersForEntries(active.archiveItems, entries)
+		if len(members) == 0 {
+			m.showError(fmt.Errorf("selected archive entries could not be resolved"))
+			return m, nil
+		}
+		return m.startOperation(fmt.Sprintf("Extracting %d selected item(s)...", len(entries)), func() Result {
+			return extractSelected(active.archivePath, members, passive.path)
 		})
 	}
 
-	m.modal = modalFormat
-	m.modalTitle = "Pack selected item"
-	m.pending = actionPack
-	m.pendingPath = entry.Path
-	m.formatCursor = indexOf(archiveFormats, defaultArchiveFormat)
-	return m, nil
+	marked := active.markedEntries()
+	if len(marked) == 0 && len(entries) == 1 && entries[0].IsArchive && !entries[0].IsDir {
+		archivePath := entries[0].Path
+		return m.startOperation("Extracting archive...", func() Result {
+			return extractSelected(archivePath, nil, passive.path)
+		})
+	}
+
+	sources := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		sources = append(sources, entry.Path)
+	}
+	name := "archive"
+	if len(entries) == 1 {
+		name = defaultOutputName(entries[0].Path)
+	}
+	return m.openArchiveDialog(actionPack, "Create archive", name, sources, active.path), nil
 }
 
 func (m model) startConvert() (tea.Model, tea.Cmd) {
@@ -313,45 +586,50 @@ func (m model) startConvert() (tea.Model, tea.Cmd) {
 
 	path := active.archivePath
 	if active.mode == paneFilesystem {
-		entry, ok := active.selected()
-		if !ok || entry.IsDir || !entry.IsArchive {
-			m.showError(fmt.Errorf("select an archive to convert"))
+		entries, err := active.operationEntries()
+		if err != nil || len(entries) != 1 || entries[0].IsDir || !entries[0].IsArchive {
+			m.showError(fmt.Errorf("select exactly one archive to convert"))
 			return m, nil
 		}
-		path = entry.Path
+		path = entries[0].Path
 	}
 	if path == "" {
 		m.showError(fmt.Errorf("select an archive to convert"))
 		return m, nil
 	}
 
-	m.modal = modalFormat
-	m.modalTitle = "Convert archive"
-	m.pending = actionConvert
-	m.pendingPath = path
-	m.formatCursor = indexOf(archiveFormats, defaultArchiveFormat)
-	return m, nil
+	return m.openArchiveDialog(actionConvert, "Convert archive", defaultOutputName(path), []string{path}, filepath.Dir(path)), nil
 }
 
-func (m model) runPending(action pendingAction, source, format string) (tea.Model, tea.Cmd) {
-	destination := m.panes[1-m.active].path
-	switch action {
-	case actionPack:
-		base := defaultOutputName(source)
-		name := availableArchiveName(destination, base, format)
-		return m.startOperation("Creating archive...", func() Result {
-			return compress(format, name, source, destination, 3)
-		})
-	case actionConvert:
-		base := defaultOutputName(source)
-		name := availableArchiveName(destination, base, format)
-		dest := filepath.Join(destination, name+"."+format)
-		return m.startOperation("Converting archive...", func() Result {
-			return convert(source, dest)
-		})
-	default:
-		return m, nil
+func (m model) openArchiveDialog(action pendingAction, title, name string, sources []string, baseDir string) model {
+	m.modal = modalArchive
+	m.modalTitle = title
+	m.pending = action
+	m.pendingSources = append([]string(nil), sources...)
+	m.pendingBaseDir = baseDir
+	m.archiveName = name
+	m.formatCursor = indexOf(archiveFormats, defaultArchiveFormat)
+	m.compression = defaultLevel
+	m.dialogField = dialogName
+	m.dialogError = ""
+	m.nameReplaceMode = true
+	return m
+}
+
+func (m model) startArchiveTest() (tea.Model, tea.Cmd) {
+	active := m.panes[m.active]
+	path := active.archivePath
+	if active.mode == paneFilesystem {
+		entries, err := active.operationEntries()
+		if err != nil || len(entries) != 1 || entries[0].IsDir || !entries[0].IsArchive {
+			m.showError(fmt.Errorf("select exactly one archive to test"))
+			return m, nil
+		}
+		path = entries[0].Path
 	}
+	return m.startOperation("Testing archive...", func() Result {
+		return testArchive(path)
+	})
 }
 
 func (m model) startOperation(status string, fn func() Result) (tea.Model, tea.Cmd) {
@@ -384,4 +662,28 @@ func (m model) panelRows() int {
 		return 5
 	}
 	return rows
+}
+
+func normalizeArchiveName(value, format string) (string, error) {
+	value = strings.TrimSpace(value)
+	lower := strings.ToLower(value)
+	for _, suffix := range []string{
+		".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst", ".tgz", ".tbz2", ".txz", ".zip", ".7z", ".tar",
+	} {
+		if strings.HasSuffix(lower, suffix) {
+			value = value[:len(value)-len(suffix)]
+			break
+		}
+	}
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." {
+		return "", fmt.Errorf("enter an archive name")
+	}
+	if strings.ContainsAny(value, `/\`) || strings.ContainsRune(value, '\x00') {
+		return "", fmt.Errorf("archive name must not contain path separators")
+	}
+	if strings.TrimSpace(format) == "" {
+		return "", fmt.Errorf("select an archive format")
+	}
+	return value, nil
 }

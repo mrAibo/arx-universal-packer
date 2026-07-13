@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,7 +26,7 @@ func (m model) View() string {
 	var statusLine string
 	if m.busy {
 		statusLine = busyStyle.Width(width).Render(truncate("WORKING  "+m.status, width))
-	} else if strings.Contains(strings.ToLower(status), "error") {
+	} else if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "failed") {
 		statusLine = errorStyle.Width(width).Render(status)
 	} else {
 		statusLine = mutedStyle.Width(width).Render(status)
@@ -48,7 +47,11 @@ func (m model) renderPane(p pane, width, rows int, active bool) string {
 	}
 
 	var b strings.Builder
-	title := panelTitleStyle.Render(truncate(p.location(), innerWidth))
+	titleText := p.location()
+	if len(p.markedEntries()) > 0 {
+		titleText += fmt.Sprintf("  [%d marked]", len(p.markedEntries()))
+	}
+	title := panelTitleStyle.Render(truncate(titleText, innerWidth))
 	b.WriteString(title)
 	b.WriteString("\n")
 	b.WriteString(mutedStyle.Render(fitColumns("Name", "Size", "Modified", innerWidth)))
@@ -65,9 +68,17 @@ func (m model) renderPane(p pane, width, rows int, active bool) string {
 		}
 		item := visible[row]
 		absoluteIndex := p.offset + row
-		line := renderEntryLine(item, innerWidth)
-		if active && absoluteIndex == p.cursor {
-			line = selectedStyle.Width(innerWidth).Render(line)
+		text := renderEntryText(item, innerWidth, p.isMarked(item))
+		line := text
+		switch {
+		case active && absoluteIndex == p.cursor:
+			line = selectedStyle.Width(innerWidth).Render(text)
+		case p.isMarked(item):
+			line = markedStyle.Width(innerWidth).Render(text)
+		case item.IsDir:
+			line = directoryStyle.Render(text)
+		case item.IsArchive:
+			line = archiveStyle.Render(text)
 		}
 		b.WriteString(line)
 		if row < rows-1 {
@@ -84,23 +95,28 @@ func (m model) renderPane(p pane, width, rows int, active bool) string {
 
 func (m model) renderKeyBar(width int) string {
 	items := [][2]string{
-		{"1", "Help"},
-		{"3", "Info"},
-		{"5", "Pack/Xtr"},
-		{"6", "Convert"},
-		{"7", "Mkdir"},
-		{"9", "Hidden"},
-		{"10", "Quit"},
+		{"F1", "Help"},
+		{"F2", "Mark"},
+		{"F3", "Info"},
+		{"F4", "Test"},
+		{"F5", "Copy"},
+		{"F6", "Conv"},
+		{"F7", "Mkdir"},
+		{"F8", "Clear"},
+		{"F9", "Hidden"},
+		{"F10", "Quit"},
 	}
 	var b strings.Builder
 	used := 0
 	for _, item := range items {
-		itemWidth := len([]rune(item[0])) + len([]rune(item[1])) + 2
+		key := keyStyle.Render(item[0])
+		label := keyLabelStyle.Render(" " + item[1] + " ")
+		itemWidth := lipgloss.Width(key) + lipgloss.Width(label)
 		if used+itemWidth > width {
 			break
 		}
-		b.WriteString(keyStyle.Render(item[0]))
-		b.WriteString(keyLabelStyle.Render(" " + item[1] + " "))
+		b.WriteString(key)
+		b.WriteString(label)
 		used += itemWidth
 	}
 	if used < width {
@@ -116,42 +132,95 @@ func (m model) renderModal(width int) string {
 
 	switch m.modal {
 	case modalHelp:
-		body.WriteString("Tab          switch panel\n")
-		body.WriteString("Enter/Right  open directory or archive\n")
-		body.WriteString("Left/Backsp  parent directory / leave archive\n")
-		body.WriteString("F5           pack selection or extract archive\n")
-		body.WriteString("F6           convert selected archive\n")
-		body.WriteString("F7           create directory\n")
-		body.WriteString("F9 or .      show/hide dot files\n")
-		body.WriteString("Ctrl-R       refresh panels\n")
-		body.WriteString("F10 or q     quit\n\n")
+		body.WriteString("Tab             switch panel\n")
+		body.WriteString("Enter/Right     open directory or archive\n")
+		body.WriteString("Left/Backspace  parent directory / leave archive\n")
+		body.WriteString("Space/Insert    mark or unmark current item\n")
+		body.WriteString("F2 / Ctrl-A     mark all visible items\n")
+		body.WriteString("*                invert marks\n")
+		body.WriteString("F8 / Ctrl-U     clear marks\n")
+		body.WriteString("F4              test selected archive\n")
+		body.WriteString("F5              create archive or extract to other panel\n")
+		body.WriteString("F6              convert selected archive\n")
+		body.WriteString("F7              create directory\n")
+		body.WriteString("F9 or .         show/hide dot files\n")
+		body.WriteString("Ctrl-R          refresh panels\n")
+		body.WriteString("F10 or q        quit\n\n")
+		body.WriteString("Mouse: click selects, double-click opens, right/middle click marks, wheel scrolls.\n\n")
 		body.WriteString(mutedStyle.Render("Enter or Esc closes this help"))
 	case modalMessage:
 		body.WriteString(m.modalMessage)
 		body.WriteString("\n\n")
 		body.WriteString(mutedStyle.Render("Enter or Esc closes this message"))
-	case modalFormat:
-		for i, format := range archiveFormats {
-			line := "  " + format
-			if i == m.formatCursor {
-				line = selectedStyle.Render(" ▸ " + format)
-			}
-			body.WriteString(line + "\n")
-		}
-		body.WriteString("\n" + mutedStyle.Render("↑/↓ choose · Enter confirm · Esc cancel"))
+	case modalArchive:
+		body.WriteString(m.renderArchiveDialog())
 	}
 
-	dialogWidth := 54
+	dialogWidth := 62
 	if width < dialogWidth+4 {
 		dialogWidth = width - 4
+	}
+	if dialogWidth < 30 {
+		dialogWidth = 30
 	}
 	return dialogStyle.Width(dialogWidth).Render(body.String())
 }
 
-func renderEntryLine(item fileEntry, width int) string {
-	nameWidth := width - 24
-	if nameWidth < 8 {
-		nameWidth = 8
+func (m model) renderArchiveDialog() string {
+	var body strings.Builder
+	destination := m.panes[1-m.active].path
+
+	body.WriteString(fmt.Sprintf("Source items: %d\n", len(m.pendingSources)))
+	body.WriteString("Destination:  " + destination + "\n\n")
+
+	nameValue := m.archiveName
+	if nameValue == "" {
+		nameValue = " "
+	}
+	nameBox := fieldStyle.Width(42).Render(nameValue)
+	if m.dialogField == dialogName {
+		nameBox = activeFieldStyle.Width(42).Render(nameValue)
+	}
+	body.WriteString("Name\n" + nameBox + "\n\n")
+
+	formatValue := "◀  " + archiveFormats[m.formatCursor] + "  ▶"
+	formatBox := fieldStyle.Width(24).Render(formatValue)
+	if m.dialogField == dialogFormat {
+		formatBox = activeFieldStyle.Width(24).Render(formatValue)
+	}
+	body.WriteString("Format\n" + formatBox + "\n\n")
+
+	levelValue := fmt.Sprintf("◀  %d  ▶", m.compression)
+	if archiveFormats[m.formatCursor] == "tar" {
+		levelValue = "not used for tar"
+	}
+	levelBox := fieldStyle.Width(24).Render(levelValue)
+	if m.dialogField == dialogLevel {
+		levelBox = activeFieldStyle.Width(24).Render(levelValue)
+	}
+	body.WriteString("Compression level\n" + levelBox + "\n\n")
+
+	button := fieldStyle.Render(" Create ")
+	if m.dialogField == dialogCreate {
+		button = activeFieldStyle.Render(" Create ")
+	}
+	body.WriteString(button + "   " + mutedStyle.Render("Esc Cancel"))
+
+	if m.dialogError != "" {
+		body.WriteString("\n\n" + errorStyle.Render(m.dialogError))
+	}
+	body.WriteString("\n\n" + mutedStyle.Render("Tab changes field · arrows change values · F5 creates · Ctrl-U clears name"))
+	return body.String()
+}
+
+func renderEntryText(item fileEntry, width int, marked bool) string {
+	nameWidth := width - 26
+	if nameWidth < 6 {
+		nameWidth = 6
+	}
+	marker := "  "
+	if marked {
+		marker = "* "
 	}
 	name := item.Name
 	if item.IsDir && name != ".." {
@@ -167,24 +236,16 @@ func renderEntryLine(item fileEntry, width int) string {
 	if !item.ModTime.IsZero() {
 		modified = item.ModTime.Format("2006-01-02 15:04")
 	}
-	line := fmt.Sprintf("%-*s %8s %-16s", nameWidth, name, size, modified)
-	line = truncate(line, width)
-
-	if item.IsDir {
-		return directoryStyle.Render(line)
-	}
-	if item.IsArchive {
-		return archiveStyle.Render(line)
-	}
-	return line
+	line := fmt.Sprintf("%s%-*s %8s %-16s", marker, nameWidth, name, size, modified)
+	return truncate(line, width)
 }
 
 func fitColumns(name, size, modified string, width int) string {
-	nameWidth := width - 24
-	if nameWidth < 8 {
-		nameWidth = 8
+	nameWidth := width - 26
+	if nameWidth < 6 {
+		nameWidth = 6
 	}
-	return truncate(fmt.Sprintf("%-*s %8s %-16s", nameWidth, name, size, modified), width)
+	return truncate(fmt.Sprintf("  %-*s %8s %-16s", nameWidth, name, size, modified), width)
 }
 
 func formatSize(size int64) string {
@@ -238,26 +299,16 @@ func indexOf(values []string, wanted string) int {
 	return 0
 }
 
-func availableArchiveName(directory, base, format string) string {
-	if base == "" {
-		base = "archive"
-	}
-	candidate := base
-	for i := 1; ; i++ {
-		path := filepath.Join(directory, candidate+"."+format)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return candidate
-		}
-		candidate = fmt.Sprintf("%s-%d", base, i)
-	}
-}
-
 func main() {
 	if len(os.Args) > 1 {
 		fmt.Println("This build is TUI-only. Run without args to use ARX Commander.")
 		return
 	}
-	program := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	program := tea.NewProgram(
+		initialModel(),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
 	if _, err := program.Run(); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
