@@ -37,6 +37,9 @@ func (m model) View() string {
 	if m.modal == modalNone {
 		return base
 	}
+	if m.modal == modalViewer {
+		return base + "\n" + m.renderViewerModal(width)
+	}
 	return base + "\n" + m.renderModal(width)
 }
 
@@ -97,12 +100,12 @@ func (m model) renderKeyBar(width int) string {
 	items := [][2]string{
 		{"F1", "Help"},
 		{"F2", "Mark"},
-		{"F3", "Info"},
+		{"F3", "View"},
 		{"F4", "Test"},
 		{"F5", "Copy"},
 		{"F6", "Conv"},
 		{"F7", "Mkdir"},
-		{"F8", "Clear"},
+		{"F8", "Delete"},
 		{"F9", "Hidden"},
 		{"F10", "Quit"},
 	}
@@ -138,14 +141,20 @@ func (m model) renderModal(width int) string {
 		body.WriteString("Space/Insert    mark or unmark current item\n")
 		body.WriteString("F2 / Ctrl-A     mark all visible items\n")
 		body.WriteString("*                invert marks\n")
-		body.WriteString("F8 / Ctrl-U     clear marks\n")
+		body.WriteString("Ctrl-U           clear marks\n")
+		body.WriteString("F3              view file or archive member\n")
 		body.WriteString("F4              test selected archive\n")
-		body.WriteString("F5              create archive or extract to other panel\n")
+		body.WriteString("F5              copy/extract/add or create archive\n")
 		body.WriteString("F6              convert selected archive\n")
 		body.WriteString("F7              create directory\n")
+		body.WriteString("F8              delete selected entries from opened archive\n")
 		body.WriteString("F9 or .         show/hide dot files\n")
 		body.WriteString("Ctrl-R          refresh panels\n")
 		body.WriteString("F10 or q        quit\n\n")
+		body.WriteString("F5 direction:\n")
+		body.WriteString("  filesystem → filesystem   create a new archive\n")
+		body.WriteString("  archive → filesystem      extract selected entries\n")
+		body.WriteString("  filesystem → archive      add selected entries\n\n")
 		body.WriteString("Mouse: click selects, double-click opens, right/middle click marks, wheel scrolls.\n\n")
 		body.WriteString(mutedStyle.Render("Enter or Esc closes this help"))
 	case modalMessage:
@@ -154,6 +163,12 @@ func (m model) renderModal(width int) string {
 		body.WriteString(mutedStyle.Render("Enter or Esc closes this message"))
 	case modalArchive:
 		body.WriteString(m.renderArchiveDialog())
+	case modalConfirm:
+		body.WriteString(m.modalMessage)
+		body.WriteString("\n\n")
+		body.WriteString(errorStyle.Render("Enter/Y confirms"))
+		body.WriteString("   ")
+		body.WriteString(mutedStyle.Render("Esc/N cancels"))
 	}
 
 	dialogWidth := 62
@@ -162,6 +177,36 @@ func (m model) renderModal(width int) string {
 	}
 	if dialogWidth < 30 {
 		dialogWidth = 30
+	}
+	return dialogStyle.Width(dialogWidth).Render(body.String())
+}
+
+func (m model) renderViewerModal(width int) string {
+	dialogWidth := width - 4
+	if dialogWidth < 50 {
+		dialogWidth = 50
+	}
+	contentWidth := dialogWidth - 8
+	if contentWidth < 20 {
+		contentWidth = 20
+	}
+	rows := m.viewerRows()
+
+	var body strings.Builder
+	body.WriteString(panelTitleStyle.Render(truncate(m.modalTitle, contentWidth)))
+	body.WriteString("\n")
+	body.WriteString(mutedStyle.Render(fmt.Sprintf("Line %d/%d · Column %d · arrows/PageUp/PageDown scroll · F3/Esc close", minInt(m.viewerOffset+1, len(m.viewerLines)), len(m.viewerLines), m.viewerColumn+1)))
+	body.WriteString("\n\n")
+
+	for row := 0; row < rows; row++ {
+		index := m.viewerOffset + row
+		if index < len(m.viewerLines) {
+			line := sliceRunes(m.viewerLines[index], m.viewerColumn, contentWidth-8)
+			body.WriteString(fmt.Sprintf("%6d  %s", index+1, line))
+		}
+		if row < rows-1 {
+			body.WriteString("\n")
+		}
 	}
 	return dialogStyle.Width(dialogWidth).Render(body.String())
 }
@@ -277,6 +322,31 @@ func truncate(value string, width int) string {
 		return "…"
 	}
 	return string(runes[:width-1]) + "…"
+}
+
+func sliceRunes(value string, start, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if start >= len(runes) {
+		return ""
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + width
+	if end > len(runes) {
+		end = len(runes)
+	}
+	return string(runes[start:end])
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func wrapIndex(value, count int) int {
