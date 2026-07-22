@@ -13,7 +13,9 @@ jobs:
 
       - name: Integrate undo trash
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
-        run: python3 scripts/integrate_undo_trash.py
+        run: |
+          sed -i 's/        replacement + "\\n\\n",/        lambda _match: replacement + "\\n\\n",/' scripts/integrate_undo_trash.py
+          python3 scripts/integrate_undo_trash.py
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
