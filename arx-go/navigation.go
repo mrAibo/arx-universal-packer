@@ -54,6 +54,7 @@ var navigationMenuItems = []string{
 	"Add current location to favorites",
 	"Show/hide hidden files",
 	"Refresh panels",
+	"Switch color theme",
 	"Convert selected archive",
 }
 
@@ -100,6 +101,8 @@ func (m model) updateNavigationMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.reloadPanes()
 			m.status = "Panels refreshed"
 		case 7:
+			m.cycleTheme()
+		case 8:
 			return m.startConvert()
 		}
 	}

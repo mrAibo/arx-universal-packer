@@ -115,12 +115,13 @@ type operationMsg struct {
 }
 
 type model struct {
-	panes  [2]pane
-	active int
-	width  int
-	height int
-	status string
-	busy   bool
+	panes      [2]pane
+	active     int
+	width      int
+	height     int
+	status     string
+	busy       bool
+	themeIndex int
 
 	modal        modalKind
 	modalTitle   string
@@ -182,6 +183,7 @@ func initialModel() model {
 }
 
 func initialModelAt(path string) model {
+	applyTheme(0)
 	left := newPane(path)
 	right := newPane(path)
 	m := model{
@@ -358,6 +360,8 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startFilesystemTrash()
 	case "f9":
 		return m.openNavigationMenu(), nil
+	case "alt+t":
+		m.cycleTheme()
 	case "ctrl+h", ".":
 		m.toggleHidden()
 	case "ctrl+l", "alt+c":
