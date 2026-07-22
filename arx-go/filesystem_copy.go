@@ -169,12 +169,16 @@ func copyFilesystemDirectory(source, destination string, info os.FileInfo, overw
 	case err == nil && !overwrite:
 		return os.ErrExist
 	case err == nil && !destinationInfo.IsDir():
-		if err := os.RemoveAll(destination); err != nil {
+		stagingRoot, err := os.MkdirTemp(filepath.Dir(destination), ".arx-dir-*")
+		if err != nil {
 			return err
 		}
-		if err := os.Mkdir(destination, info.Mode().Perm()); err != nil {
+		defer os.RemoveAll(stagingRoot)
+		staging := filepath.Join(stagingRoot, "replacement")
+		if err := copyFilesystemDirectory(source, staging, info, false); err != nil {
 			return err
 		}
+		return replaceFilesystemPath(staging, destination, true)
 	case err == nil:
 		// Merge into the existing directory after explicit overwrite confirmation.
 	case os.IsNotExist(err):
@@ -268,14 +272,44 @@ func copyFilesystemSymlink(source, destination string, overwrite bool) error {
 }
 
 func replaceFilesystemPath(source, destination string, overwrite bool) error {
-	if !overwrite {
-		return os.Rename(source, destination)
-	}
-	if err := os.Rename(source, destination); err == nil {
-		return nil
-	}
-	if err := os.RemoveAll(destination); err != nil {
+	sourceInfo, err := os.Lstat(source)
+	if err != nil {
 		return err
 	}
-	return os.Rename(source, destination)
+	destinationInfo, err := os.Lstat(destination)
+	if os.IsNotExist(err) {
+		return os.Rename(source, destination)
+	}
+	if err != nil {
+		return err
+	}
+	if !overwrite {
+		return os.ErrExist
+	}
+	if sourceInfo.IsDir() == destinationInfo.IsDir() && !destinationInfo.IsDir() {
+		return os.Rename(source, destination)
+	}
+
+	backupFile, err := os.CreateTemp(filepath.Dir(destination), ".arx-backup-*")
+	if err != nil {
+		return err
+	}
+	backup := backupFile.Name()
+	if err := backupFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(backup); err != nil {
+		return err
+	}
+	if err := os.Rename(destination, backup); err != nil {
+		return err
+	}
+	if err := os.Rename(source, destination); err != nil {
+		rollbackErr := os.Rename(backup, destination)
+		if rollbackErr != nil {
+			return fmt.Errorf("replace failed: %w; rollback failed: %v", err, rollbackErr)
+		}
+		return err
+	}
+	return os.RemoveAll(backup)
 }

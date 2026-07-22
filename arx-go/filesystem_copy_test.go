@@ -121,3 +121,18 @@ func TestF2OpensArchiveCreationDialog(t *testing.T) {
 		t.Fatalf("modal=%v pending=%v", dialog.modal, dialog.pending)
 	}
 }
+
+func TestReplaceFilesystemPathKeepsDestinationWhenSourceIsMissing(t *testing.T) {
+	directory := t.TempDir()
+	destination := filepath.Join(directory, "existing.txt")
+	if err := os.WriteFile(destination, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceFilesystemPath(filepath.Join(directory, "missing.txt"), destination, true); err == nil {
+		t.Fatal("expected missing source error")
+	}
+	content, err := os.ReadFile(destination)
+	if err != nil || string(content) != "keep" {
+		t.Fatalf("destination changed after failed replacement: %q err=%v", content, err)
+	}
+}
