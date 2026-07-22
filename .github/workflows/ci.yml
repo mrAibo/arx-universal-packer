@@ -65,6 +65,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
         run: |
           rm -f scripts/integrate_undo_trash.py .github/workflows/undo-trash-integrate.yml .trigger-undo-trash undo-trash-test.log
+          git fetch origin main --depth=1
           git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
