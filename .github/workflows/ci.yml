@@ -10,81 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/filesystem-trash-delete
-          fetch-depth: 0
-
-      - name: Apply one-shot filesystem trash integration
-        run: |
-          python .github/apply-trash.py
-          gofmt -w arx-go/archive_edit.go arx-go/main.go arx-go/view.go arx-go/filesystem_trash.go arx-go/filesystem_trash_test.go
-          cat > .github/workflows/ci.yml <<'EOF'
-          name: CI
-
-          on: [push, pull_request]
-
-          permissions:
-            contents: write
-
-          jobs:
-            test:
-              runs-on: ubuntu-latest
-              steps:
-                - uses: actions/checkout@v4
-
-                - name: Install archive tools
-                  run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
-
-                - name: Run arx (bash) smoke test
-                  run: bash tests/test_arx.sh
-
-                - name: Set up Go
-                  uses: actions/setup-go@v5
-                  with:
-                    go-version: '1.26.x'
-                    cache-dependency-path: arx-go/go.sum
-
-                - name: Test arx-go
-                  run: cd arx-go && go test -race ./...
-
-                - name: Build arx-go distribution binary
-                  run: cd arx-go && go build -trimpath -ldflags="-s -w" -o ../dist/arx-go .
-
-                - name: Verify distribution binary
-                  run: |
-                    test -x dist/arx-go
-                    file dist/arx-go
-                    dist/arx-go --version || true
-
-                - name: Upload arx-go binary
-                  uses: actions/upload-artifact@v4
-                  with:
-                    name: arx-go-linux-amd64
-                    path: dist/arx-go
-                    if-no-files-found: error
-
-                - name: Commit rebuilt distribution binary
-                  if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
-                  run: |
-                    if git diff --quiet -- dist/arx-go; then
-                      echo "dist/arx-go is already up to date"
-                      exit 0
-                    fi
-                    git config user.name "github-actions[bot]"
-                    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                    git add dist/arx-go
-                    git commit -m "Rebuild arx-go distribution binary"
-                    git push origin "HEAD:${GITHUB_REF_NAME}"
-          EOF
-          sed -i 's/^          //' .github/workflows/ci.yml
-          rm .github/apply-trash.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Integrate safe filesystem trash"
-          git push origin HEAD:agent/filesystem-trash-delete
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
@@ -116,3 +41,16 @@ jobs:
           name: arx-go-linux-amd64
           path: dist/arx-go
           if-no-files-found: error
+
+      - name: Commit rebuilt distribution binary
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          if git diff --quiet -- dist/arx-go; then
+            echo "dist/arx-go is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/arx-go
+          git commit -m "Rebuild arx-go distribution binary"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
