@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/undo-trash
 
       - name: Integrate undo trash
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
