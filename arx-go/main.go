@@ -150,6 +150,13 @@ type model struct {
 	copyConflictApplyAll bool
 	copyConflictRename   string
 
+	movePlans            []filesystemMoveDecisionPlan
+	moveConflictIndex    int
+	moveConflictAction   copyConflictAction
+	moveConflictApplyAll bool
+	moveConflictRename   string
+	moveConflictTarget   string
+
 	navMenuCursor int
 	navInputKind  navigationInputKind
 	navInputValue string
@@ -445,6 +452,8 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateConfirm(msg)
 	case modalCopyConflict:
 		return m.updateCopyConflict(msg)
+	case modalMoveConflict:
+		return m.updateMoveConflict(msg)
 	case modalNavigationMenu:
 		return m.updateNavigationMenu(msg)
 	case modalNavigationInput:
