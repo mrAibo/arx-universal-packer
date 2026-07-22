@@ -130,3 +130,20 @@ func TestCompatibilityConvertPreservesArchiveRoot(t *testing.T) {
 		t.Fatalf("converted archive lost its original root: %v", items)
 	}
 }
+
+func TestArchiveExtractionMembersSkipsNonEmptyDirectories(t *testing.T) {
+	got := archiveExtractionMembers([]string{
+		"docs/",
+		"docs/readme.txt",
+		"empty/",
+		"root.txt",
+	})
+	if containsString(got, "docs") {
+		t.Fatalf("non-empty directory should not be requested separately: %v", got)
+	}
+	for _, wanted := range []string{"docs/readme.txt", "empty", "root.txt"} {
+		if !containsString(got, wanted) {
+			t.Fatalf("missing %q from extraction members: %v", wanted, got)
+		}
+	}
+}
