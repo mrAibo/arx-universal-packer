@@ -124,7 +124,7 @@ func TestContextSensitiveFunctionKeyLabels(t *testing.T) {
 	if got := m.f5Label(); got != "Copy" {
 		t.Fatalf("filesystem F5=%q", got)
 	}
-	if got := m.f8Label(); got != "Clear" {
+	if got := m.f8Label(); got != "Trash" {
 		t.Fatalf("filesystem F8=%q", got)
 	}
 

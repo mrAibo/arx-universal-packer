@@ -24,6 +24,7 @@ const (
 	confirmArchiveDelete
 	confirmFilesystemCopy
 	confirmFilesystemMove
+	confirmFilesystemTrash
 )
 
 func (m model) startViewer() (tea.Model, tea.Cmd) {
@@ -263,6 +264,8 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.runFilesystemCopy(entries, destination, true)
 		case confirmFilesystemMove:
 			return m.runFilesystemMove(entries, destination, true)
+		case confirmFilesystemTrash:
+			return m.runFilesystemTrash(entries)
 		default:
 			return m, nil
 		}
