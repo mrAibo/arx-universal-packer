@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -137,5 +138,28 @@ func TestMoveMultipleItemsRequiresDirectoryTarget(t *testing.T) {
 	}
 	if _, _, err := filesystemMovePlans([]fileEntry{{Path: left}, {Path: right}}, filepath.Join(directory, "renamed")); err == nil {
 		t.Fatal("expected multiple-item destination error")
+	}
+}
+
+func TestMoveFilesystemCrossDeviceFallback(t *testing.T) {
+	sourceRoot := t.TempDir()
+	destination := t.TempDir()
+	source := filepath.Join(sourceRoot, "large.dat")
+	target := filepath.Join(destination, "large.dat")
+	if err := os.WriteFile(source, []byte("cross-device"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	initialReplace := func(string, string, bool) error {
+		return syscall.EXDEV
+	}
+	if err := moveFilesystemPathWithReplace(source, target, false, initialReplace); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(source); !os.IsNotExist(err) {
+		t.Fatalf("source still exists after committed fallback: %v", err)
+	}
+	content, err := os.ReadFile(target)
+	if err != nil || string(content) != "cross-device" {
+		t.Fatalf("fallback target=%q err=%v", content, err)
 	}
 }

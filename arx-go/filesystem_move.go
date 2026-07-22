@@ -207,7 +207,11 @@ func moveFilesystem(entries []fileEntry, target string, overwrite bool) Result {
 }
 
 func moveFilesystemPath(source, target string, overwrite bool) error {
-	err := replaceFilesystemPath(source, target, overwrite)
+	return moveFilesystemPathWithReplace(source, target, overwrite, replaceFilesystemPath)
+}
+
+func moveFilesystemPathWithReplace(source, target string, overwrite bool, replace func(string, string, bool) error) error {
+	err := replace(source, target, overwrite)
 	if err == nil {
 		return nil
 	}
