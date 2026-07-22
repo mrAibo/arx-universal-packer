@@ -149,7 +149,7 @@ func (m model) f8Label() string {
 	if m.panes[m.active].mode == paneArchive {
 		return "Delete"
 	}
-	return "Clear"
+	return "Trash"
 }
 
 func (m model) renderModal(width int) string {
@@ -173,7 +173,7 @@ func (m model) renderModal(width int) string {
 		body.WriteString("F6              move/rename selected filesystem items\n")
 		body.WriteString("Alt-F6          convert selected archive\n")
 		body.WriteString("F7              create a named directory\n")
-		body.WriteString("F8              delete archive entries; clear filesystem marks\n")
+		body.WriteString("F8              move filesystem items to trash; delete archive entries\n")
 		body.WriteString("F9              open command menu\n")
 		body.WriteString("Ctrl-H or .      show/hide dot files\n")
 		body.WriteString("Ctrl-L / Alt-C   change directory\n")
