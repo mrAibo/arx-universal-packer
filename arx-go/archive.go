@@ -73,10 +73,58 @@ func compress(format, name, source, targetDir string, level int) Result {
 	return compressMany(format, name, []string{src}, filepath.Dir(src), targetDir, level)
 }
 
-// extract delegates to the selective extractor, which validates archive member
-// paths before invoking tar, unzip, or 7z.
+// extract validates and filters the archive member list before delegating to
+// the selective extractor. Non-empty directory entries are omitted because
+// tar extracts their descendants recursively; requesting both forms causes
+// false "not found" failures. Empty directories remain explicit members.
 func extract(path, targetDir string) Result {
-	return extractSelected(path, nil, targetDir)
+	items, err := readArchiveItems(path)
+	if err != nil {
+		return Result{Err: err}
+	}
+	members := archiveExtractionMembers(items)
+	if len(members) == 0 {
+		return Result{Err: fmt.Errorf("archive has no safe extractable entries")}
+	}
+	return extractSelected(path, members, targetDir)
+}
+
+func archiveExtractionMembers(items []string) []string {
+	type member struct {
+		path  string
+		isDir bool
+	}
+
+	normalized := make([]member, 0, len(items))
+	for _, item := range items {
+		path := normalizeArchivePath(item)
+		if path == "" {
+			continue
+		}
+		normalized = append(normalized, member{
+			path:  path,
+			isDir: strings.HasSuffix(strings.ReplaceAll(strings.TrimSpace(item), "\\", "/"), "/"),
+		})
+	}
+
+	result := make([]string, 0, len(normalized))
+	for index, candidate := range normalized {
+		if candidate.isDir {
+			prefix := candidate.path + "/"
+			hasDescendant := false
+			for otherIndex, other := range normalized {
+				if otherIndex != index && strings.HasPrefix(other.path, prefix) {
+					hasDescendant = true
+					break
+				}
+			}
+			if hasDescendant {
+				continue
+			}
+		}
+		result = append(result, candidate.path)
+	}
+	return safeUniqueMembers(result)
 }
 
 // list returns the normalized archive member list used by the TUI browser.
