@@ -24,7 +24,18 @@ jobs:
           cache-dependency-path: arx-go/go.sum
 
       - name: Test arx-go
-        run: cd arx-go && go test -race ./...
+        run: |
+          set -o pipefail
+          cd arx-go
+          go test -race -v ./... 2>&1 | tee ../trash-test.log
+
+      - name: Upload trash test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: filesystem-trash-go-test
+          path: trash-test.log
+          if-no-files-found: error
 
       - name: Build arx-go distribution binary
         run: cd arx-go && go build -trimpath -ldflags="-s -w" -o ../dist/arx-go .
@@ -41,16 +52,3 @@ jobs:
           name: arx-go-linux-amd64
           path: dist/arx-go
           if-no-files-found: error
-
-      - name: Commit rebuilt distribution binary
-        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
-        run: |
-          if git diff --quiet -- dist/arx-go; then
-            echo "dist/arx-go is already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/arx-go
-          git commit -m "Rebuild arx-go distribution binary"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
