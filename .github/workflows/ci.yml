@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Integrate undo trash
-        if: github.event_name == 'push' && github.ref_name == 'agent/undo-trash' && github.actor != 'github-actions[bot]'
+        if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
         run: python3 scripts/integrate_undo_trash.py
 
       - name: Install archive tools
@@ -47,19 +47,18 @@ jobs:
           if-no-files-found: error
 
       - name: Commit integrated undo trash
-        if: github.event_name == 'push' && github.ref_name == 'agent/undo-trash' && github.actor != 'github-actions[bot]'
+        if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
         run: |
-          rm -f scripts/integrate_undo_trash.py .github/workflows/undo-trash-integrate.yml
-          cp .github/workflows/ci.yml /tmp/ci.yml
+          rm -f scripts/integrate_undo_trash.py .github/workflows/undo-trash-integrate.yml .trigger-undo-trash
           git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Add undo for last trash operation"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin HEAD:agent/undo-trash
 
       - name: Commit rebuilt distribution binary
-        if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.ref_name != 'agent/undo-trash'
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         run: |
           if git diff --quiet -- dist/arx-go; then
             echo "dist/arx-go is already up to date"
