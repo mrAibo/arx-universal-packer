@@ -1,0 +1,28 @@
+name: Copy conflict diagnostic
+
+on:
+  push:
+    branches: [agent/copy-conflict-dialog]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: arx-go/go.sum
+      - name: Run verbose Go tests
+        run: |
+          set -o pipefail
+          cd arx-go
+          go test -race -v ./... 2>&1 | tee ../copy-conflict-go-test.log
+      - name: Upload diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: copy-conflict-go-test
+          path: copy-conflict-go-test.log
+          if-no-files-found: error
