@@ -14,6 +14,7 @@ The repository also contains the original Bash-based archive utility. The Go com
 
 - Dual-pane terminal file manager
 - Keyboard and mouse navigation
+- Runtime color-theme switching with `Alt+T` or the F9 menu
 - Archive creation, extraction, viewing, testing, editing, and conversion
 - Support for `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, `zip`, and `7z`
 - Midnight Commander-style copy and move conflict dialogs
@@ -50,10 +51,15 @@ ARX opens with two filesystem panels. The active panel is the source for most op
 | `F8` | Move selected item(s) to Trash |
 | `Ctrl+Z` | Restore the latest Trash batch |
 | `F9` | Menu |
+| `Alt+T` | Switch to the next color theme |
 | `F10` | Quit |
 | `Esc` | Close a dialog or cancel a running operation |
 
 The exact dialog options depend on the current selection. For example, archive actions appear when an archive is selected, while normal files and directories expose filesystem operations.
+
+### Color themes
+
+Press `Alt+T` or choose **Switch color theme** from the F9 menu to cycle through the built-in Midnight, Nord, Forest, and Monochrome themes. The active theme changes immediately and applies to panels, selections, dialogs, status messages, and the function-key bar. Theme selection currently lasts for the running ARX session.
 
 ---
 

@@ -176,6 +176,7 @@ func (m model) renderModal(width int) string {
 		body.WriteString("F8              move filesystem items to trash; delete archive entries\n")
 		body.WriteString("Ctrl-Z          restore the last ARX trash operation\n")
 		body.WriteString("F9              open command menu\n")
+		body.WriteString("Alt-T           switch color theme\n")
 		body.WriteString("Ctrl-H or .      show/hide dot files\n")
 		body.WriteString("Ctrl-L / Alt-C   change directory\n")
 		body.WriteString("Ctrl-S / Alt-S   quick search; Ctrl-S repeats\n")
