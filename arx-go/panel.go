@@ -281,25 +281,32 @@ func (p *pane) goUp() error {
 	return nil
 }
 
-func (p *pane) createDirectory() error {
+func (p *pane) createDirectory(name string) error {
 	if p.mode != paneFilesystem {
 		return fmt.Errorf("cannot create a directory inside an archive yet")
 	}
-	name := "new-folder"
-	for i := 1; ; i++ {
-		candidate := filepath.Join(p.path, name)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			if err := os.Mkdir(candidate, 0o755); err != nil {
-				return err
-			}
-			if err := p.loadDirectory(); err != nil {
-				return err
-			}
-			p.selectName(name)
-			return nil
-		}
-		name = fmt.Sprintf("new-folder-%d", i)
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return fmt.Errorf("enter a directory name")
 	}
+	if strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, '\x00') {
+		return fmt.Errorf("directory name must not contain path separators")
+	}
+
+	candidate := filepath.Join(p.path, name)
+	if _, err := os.Lstat(candidate); err == nil {
+		return fmt.Errorf("file or directory already exists: %s", name)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Mkdir(candidate, 0o755); err != nil {
+		return err
+	}
+	if err := p.loadDirectory(); err != nil {
+		return err
+	}
+	p.selectName(name)
+	return nil
 }
 
 func (p pane) location() string {

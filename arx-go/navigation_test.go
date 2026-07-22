@@ -81,3 +81,69 @@ func TestF9OpensMenuAndCtrlHTogglesHidden(t *testing.T) {
 		t.Fatal("Ctrl-H did not toggle hidden files")
 	}
 }
+
+func TestF7CreatesNamedDirectory(t *testing.T) {
+	directory := t.TempDir()
+	m := initialModelAt(directory)
+	updated, command := m.updateBrowser(tea.KeyMsg{Type: tea.KeyF7})
+	if command != nil {
+		t.Fatal("F7 should open a dialog without starting an operation")
+	}
+	dialog := updated.(model)
+	if dialog.modal != modalNavigationInput || dialog.navInputKind != navigationInputMkdir {
+		t.Fatalf("modal=%v input=%v", dialog.modal, dialog.navInputKind)
+	}
+	dialog.navInputValue = "Projects"
+	updated, _ = dialog.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
+	dialog = updated.(model)
+	if _, err := os.Stat(filepath.Join(directory, "Projects")); err != nil {
+		t.Fatalf("directory was not created: %v", err)
+	}
+	entry, ok := dialog.panes[0].selected()
+	if !ok || entry.Name != "Projects" {
+		t.Fatalf("selected=%q", entry.Name)
+	}
+}
+
+func TestCreateDirectoryRejectsUnsafeName(t *testing.T) {
+	directory := t.TempDir()
+	pane := newPane(directory)
+	if err := pane.createDirectory("../escape"); err == nil {
+		t.Fatal("expected path separator validation error")
+	}
+	if _, err := os.Stat(filepath.Join(directory, "..", "escape")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe directory escaped active panel: %v", err)
+	}
+}
+
+func TestContextSensitiveFunctionKeyLabels(t *testing.T) {
+	directory := t.TempDir()
+	archive := filepath.Join(directory, "sample.zip")
+	writeTestZip(t, archive)
+	m := initialModelAt(directory)
+	if got := m.f5Label(); got != "Pack" {
+		t.Fatalf("filesystem F5=%q", got)
+	}
+	if got := m.f8Label(); got != "Clear" {
+		t.Fatalf("filesystem F8=%q", got)
+	}
+
+	m.panes[0].selectName("sample.zip")
+	if got := m.f5Label(); got != "Extract" {
+		t.Fatalf("selected archive F5=%q", got)
+	}
+
+	m.panes[0].mode = paneArchive
+	if got := m.f5Label(); got != "Extract" {
+		t.Fatalf("archive source F5=%q", got)
+	}
+	if got := m.f8Label(); got != "Delete" {
+		t.Fatalf("archive F8=%q", got)
+	}
+
+	m.panes[0].mode = paneFilesystem
+	m.panes[1].mode = paneArchive
+	if got := m.f5Label(); got != "Add" {
+		t.Fatalf("archive destination F5=%q", got)
+	}
+}

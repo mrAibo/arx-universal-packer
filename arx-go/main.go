@@ -299,11 +299,11 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f6":
 		return m.startConvert()
 	case "f7":
-		if err := active.createDirectory(); err != nil {
-			m.showError(err)
-		} else {
-			m.status = "Directory created"
+		if active.mode != paneFilesystem {
+			m.showError(fmt.Errorf("cannot create a directory inside an archive yet"))
+			return m, nil
 		}
+		return m.openNavigationInput(navigationInputMkdir, "Create directory", ""), nil
 	case "f8":
 		return m.startArchiveDelete()
 	case "f9":

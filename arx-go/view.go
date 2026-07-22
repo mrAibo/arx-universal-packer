@@ -102,10 +102,10 @@ func (m model) renderKeyBar(width int) string {
 		{"F2", "Mark"},
 		{"F3", "View"},
 		{"F4", "Test"},
-		{"F5", "Copy"},
+		{"F5", m.f5Label()},
 		{"F6", "Conv"},
 		{"F7", "Mkdir"},
-		{"F8", "Delete"},
+		{"F8", m.f8Label()},
 		{"F9", "Menu"},
 		{"F10", "Quit"},
 	}
@@ -128,6 +128,30 @@ func (m model) renderKeyBar(width int) string {
 	return b.String()
 }
 
+func (m model) f5Label() string {
+	active := m.panes[m.active]
+	passive := m.panes[1-m.active]
+	if active.mode == paneArchive {
+		return "Extract"
+	}
+	if passive.mode == paneArchive {
+		return "Add"
+	}
+	if len(active.markedEntries()) == 0 {
+		if entry, ok := active.selected(); ok && entry.IsArchive && !entry.IsDir {
+			return "Extract"
+		}
+	}
+	return "Pack"
+}
+
+func (m model) f8Label() string {
+	if m.panes[m.active].mode == paneArchive {
+		return "Delete"
+	}
+	return "Clear"
+}
+
 func (m model) renderModal(width int) string {
 	var body strings.Builder
 	body.WriteString(panelTitleStyle.Render(m.modalTitle))
@@ -144,10 +168,10 @@ func (m model) renderModal(width int) string {
 		body.WriteString("Ctrl-U           clear marks\n")
 		body.WriteString("F3              view file or archive member\n")
 		body.WriteString("F4              test selected archive\n")
-		body.WriteString("F5              copy/extract/add or create archive\n")
+		body.WriteString("F5              pack/extract/add according to panel direction\n")
 		body.WriteString("F6              convert selected archive\n")
-		body.WriteString("F7              create directory\n")
-		body.WriteString("F8              delete selected entries from opened archive\n")
+		body.WriteString("F7              create a named directory\n")
+		body.WriteString("F8              delete archive entries; clear filesystem marks\n")
 		body.WriteString("F9              open command menu\n")
 		body.WriteString("Ctrl-H or .      show/hide dot files\n")
 		body.WriteString("Ctrl-L / Alt-C   change directory\n")

@@ -22,6 +22,7 @@ const (
 	navigationInputNone navigationInputKind = iota
 	navigationInputPath
 	navigationInputSearch
+	navigationInputMkdir
 )
 
 type navigationListKind int
@@ -110,6 +111,14 @@ func (m model) updateNavigationInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		value := strings.TrimSpace(m.navInputValue)
 		kind := m.navInputKind
 		m.closeModal()
+		if kind == navigationInputMkdir {
+			if err := m.panes[m.active].createDirectory(value); err != nil {
+				m.showError(err)
+			} else {
+				m.status = "Directory created: " + value
+			}
+			return m, nil
+		}
 		if value == "" {
 			return m, nil
 		}
