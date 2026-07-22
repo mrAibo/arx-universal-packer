@@ -106,7 +106,7 @@ func (m model) renderKeyBar(width int) string {
 		{"F6", "Conv"},
 		{"F7", "Mkdir"},
 		{"F8", "Delete"},
-		{"F9", "Hidden"},
+		{"F9", "Menu"},
 		{"F10", "Quit"},
 	}
 	var b strings.Builder
@@ -148,7 +148,13 @@ func (m model) renderModal(width int) string {
 		body.WriteString("F6              convert selected archive\n")
 		body.WriteString("F7              create directory\n")
 		body.WriteString("F8              delete selected entries from opened archive\n")
-		body.WriteString("F9 or .         show/hide dot files\n")
+		body.WriteString("F9              open command menu\n")
+		body.WriteString("Ctrl-H or .      show/hide dot files\n")
+		body.WriteString("Ctrl-L / Alt-C   change directory\n")
+		body.WriteString("Ctrl-S / Alt-S   quick search; Ctrl-S repeats\n")
+		body.WriteString("Alt-Y / Alt-U    history back / forward\n")
+		body.WriteString("Alt-H            directory history\n")
+		body.WriteString("Ctrl-\\          favorites; Ctrl-B adds current location\n")
 		body.WriteString("Ctrl-R          refresh panels\n")
 		body.WriteString("F10 or q        quit\n\n")
 		body.WriteString("F5 direction:\n")
@@ -169,6 +175,8 @@ func (m model) renderModal(width int) string {
 		body.WriteString(errorStyle.Render("Enter/Y confirms"))
 		body.WriteString("   ")
 		body.WriteString(mutedStyle.Render("Esc/N cancels"))
+	case modalNavigationMenu, modalNavigationInput, modalNavigationList:
+		body.WriteString(m.renderNavigationModal())
 	}
 
 	dialogWidth := 62

@@ -21,65 +21,65 @@ var archiveFormats = []string{"tar.zst", "tar.gz", "tar.xz", "tar.bz2", "zip", "
 
 var (
 	menuStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("19")).
-		Foreground(lipgloss.Color("231")).
-		Bold(true)
+			Background(lipgloss.Color("19")).
+			Foreground(lipgloss.Color("231")).
+			Bold(true)
 
 	panelBorderStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("240"))
 
 	activePanelBorderStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("39"))
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("39"))
 
 	panelTitleStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("45")).
-		Bold(true)
+			Foreground(lipgloss.Color("45")).
+			Bold(true)
 
 	selectedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("39")).
-		Foreground(lipgloss.Color("231"))
+			Background(lipgloss.Color("39")).
+			Foreground(lipgloss.Color("231"))
 
 	markedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("58")).
-		Foreground(lipgloss.Color("229")).
-		Bold(true)
+			Background(lipgloss.Color("58")).
+			Foreground(lipgloss.Color("229")).
+			Bold(true)
 
 	directoryStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("45")).
-		Bold(true)
+			Foreground(lipgloss.Color("45")).
+			Bold(true)
 
 	archiveStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("220"))
+			Foreground(lipgloss.Color("220"))
 
 	mutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	errorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 	busyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
 
 	keyStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("19")).
-		Foreground(lipgloss.Color("231")).
-		Bold(true)
+			Background(lipgloss.Color("19")).
+			Foreground(lipgloss.Color("231")).
+			Bold(true)
 
 	keyLabelStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("252")).
-		Foreground(lipgloss.Color("0"))
+			Background(lipgloss.Color("252")).
+			Foreground(lipgloss.Color("0"))
 
 	dialogStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("39")).
-		Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("39")).
+			Padding(1, 2)
 
 	fieldStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1)
 
 	activeFieldStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("39")).
-		Padding(0, 1)
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("39")).
+				Padding(0, 1)
 )
 
 type modalKind int
@@ -142,6 +142,16 @@ type model struct {
 	confirm        confirmKind
 	confirmArchive string
 	confirmEntries []fileEntry
+
+	navMenuCursor int
+	navInputKind  navigationInputKind
+	navInputValue string
+	navListKind   navigationListKind
+	navListCursor int
+	navListItems  []navigationItem
+	quickSearch   string
+	history       [2][]paneLocation
+	historyIndex  [2]int
 
 	lastClickPanel int
 	lastClickIndex int
@@ -262,15 +272,19 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		active.clearMarks()
 		m.status = "Marks cleared"
 	case "enter", "right":
+		before := m.currentPaneLocation(m.active)
 		if err := active.openSelected(); err != nil {
 			m.showError(err)
 		} else {
+			m.recordNavigation(m.active, before)
 			m.status = active.location()
 		}
 	case "left", "backspace":
+		before := m.currentPaneLocation(m.active)
 		if err := active.goUp(); err != nil {
 			m.showError(err)
 		} else {
+			m.recordNavigation(m.active, before)
 			m.status = active.location()
 		}
 	case "f1":
@@ -292,15 +306,28 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "f8":
 		return m.startArchiveDelete()
-	case "f9", ".":
-		active.showHidden = !active.showHidden
-		if err := active.reload(); err != nil {
-			m.showError(err)
-		} else if active.showHidden {
-			m.status = "Hidden files: shown"
+	case "f9":
+		return m.openNavigationMenu(), nil
+	case "ctrl+h", ".":
+		m.toggleHidden()
+	case "ctrl+l", "alt+c":
+		return m.openNavigationInput(navigationInputPath, "Change directory", active.location()), nil
+	case "ctrl+s", "alt+s", "/":
+		if m.quickSearch != "" && msg.String() == "ctrl+s" {
+			m.searchNext()
 		} else {
-			m.status = "Hidden files: hidden"
+			return m.openNavigationInput(navigationInputSearch, "Quick search", m.quickSearch), nil
 		}
+	case "alt+y":
+		m.historyBack()
+	case "alt+u":
+		m.historyForward()
+	case "alt+h":
+		return m.openHistoryList(), nil
+	case "ctrl+\\":
+		return m.openFavoritesList(), nil
+	case "ctrl+b":
+		m.addCurrentFavorite()
 	case "ctrl+r", "r":
 		m.reloadPanes()
 		m.status = "Panels refreshed"
@@ -405,6 +432,12 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateViewer(msg)
 	case modalConfirm:
 		return m.updateConfirm(msg)
+	case modalNavigationMenu:
+		return m.updateNavigationMenu(msg)
+	case modalNavigationInput:
+		return m.updateNavigationInput(msg)
+	case modalNavigationList:
+		return m.updateNavigationList(msg)
 	default:
 		return m, nil
 	}
