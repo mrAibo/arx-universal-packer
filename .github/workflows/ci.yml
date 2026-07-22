@@ -15,9 +15,12 @@ jobs:
           fetch-depth: 0
 
       - name: Apply one-shot MC navigation patch
+        id: patch
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/mc-navigation-menu' && hashFiles('.github/apply_mc_navigation.py') != ''
+        continue-on-error: true
         run: |
-          python .github/apply_mc_navigation.py
+          set -o pipefail
+          python .github/apply_mc_navigation.py 2>&1 | tee /tmp/mc-navigation-patch.log
           gofmt -w arx-go/main.go arx-go/view.go arx-go/navigation.go arx-go/navigation_test.go
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -26,6 +29,18 @@ jobs:
           git add arx-go/main.go arx-go/view.go arx-go/navigation.go arx-go/navigation_test.go .github/workflows/ci.yml .github/apply_mc_navigation.py
           git commit -m "Add MC-style navigation and command menu"
           git push origin HEAD:agent/mc-navigation-menu
+
+      - name: Upload patch diagnostic
+        if: always() && steps.patch.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc-navigation-patch-log
+          path: /tmp/mc-navigation-patch.log
+          if-no-files-found: error
+
+      - name: Stop after patch failure
+        if: steps.patch.outcome == 'failure'
+        run: exit 1
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
