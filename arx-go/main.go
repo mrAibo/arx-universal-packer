@@ -352,6 +352,8 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.openNavigationInput(navigationInputMkdir, "Create directory", ""), nil
+	case "ctrl+z":
+		return m.startRestoreLastTrash()
 	case "f8":
 		return m.startFilesystemTrash()
 	case "f9":

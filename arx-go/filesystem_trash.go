@@ -90,12 +90,17 @@ func trashFilesystem(entries []fileEntry) Result {
 		return Result{Err: err}
 	}
 	completed := 0
+	records := make([]trashRecord, 0, len(entries))
 	for _, entry := range entries {
-		if err := trashFilesystemPath(entry.Path, filesDir, infoDir, time.Now()); err != nil {
+		record, err := trashFilesystemPathRecord(entry.Path, filesDir, infoDir, time.Now())
+		if err != nil {
+			setLastTrashRecords(records)
 			return Result{Err: fmt.Errorf("trash %s: %w (%d of %d completed)", entry.Path, err, completed, len(entries))}
 		}
+		records = append(records, record)
 		completed++
 	}
+	setLastTrashRecords(records)
 	return Result{Output: fmt.Sprintf("Moved %d item(s) to trash", completed)}
 }
 
@@ -121,50 +126,55 @@ func trashDirectories() (string, string, error) {
 }
 
 func trashFilesystemPath(path, filesDir, infoDir string, deletedAt time.Time) error {
+	_, err := trashFilesystemPathRecord(path, filesDir, infoDir, deletedAt)
+	return err
+}
+
+func trashFilesystemPathRecord(path, filesDir, infoDir string, deletedAt time.Time) (trashRecord, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	if _, err := os.Lstat(absolute); err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	_, dataPath, infoPath, err := availableTrashName(filepath.Base(absolute), filesDir, infoDir)
 	if err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	infoContent := fmt.Sprintf("[Trash Info]\nPath=%s\nDeletionDate=%s\n", url.PathEscape(absolute), deletedAt.Format("2006-01-02T15:04:05"))
 	temporary, err := os.CreateTemp(infoDir, ".arx-trashinfo-*")
 	if err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	temporaryName := temporary.Name()
 	defer os.Remove(temporaryName)
 	if err := temporary.Chmod(0o600); err != nil {
 		temporary.Close()
-		return err
+		return trashRecord{}, err
 	}
 	if _, err := temporary.WriteString(infoContent); err != nil {
 		temporary.Close()
-		return err
+		return trashRecord{}, err
 	}
 	if err := temporary.Sync(); err != nil {
 		temporary.Close()
-		return err
+		return trashRecord{}, err
 	}
 	if err := temporary.Close(); err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	if err := moveFilesystemPath(absolute, dataPath, false); err != nil {
-		return err
+		return trashRecord{}, err
 	}
 	if err := os.Rename(temporaryName, infoPath); err != nil {
 		rollbackErr := moveFilesystemPath(dataPath, absolute, false)
 		if rollbackErr != nil {
-			return fmt.Errorf("write trash metadata: %w; rollback failed: %v", err, rollbackErr)
+			return trashRecord{}, fmt.Errorf("write trash metadata: %w; rollback failed: %v", err, rollbackErr)
 		}
-		return err
+		return trashRecord{}, err
 	}
-	return nil
+	return trashRecord{originalPath: absolute, dataPath: dataPath, infoPath: infoPath}, nil
 }
 
 func availableTrashName(base, filesDir, infoDir string) (string, string, string, error) {
