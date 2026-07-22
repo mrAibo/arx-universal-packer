@@ -19,6 +19,14 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/mc-navigation-menu' && hashFiles('.github/apply_mc_navigation.py') != ''
         continue-on-error: true
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/apply_mc_navigation.py')
+          text = path.read_text()
+          start = text.index('replace(\n    "arx-go/main.go",\n    "\\t\\tm.confirmArchive')
+          end = text.index('replace(\n    "arx-go/view.go",', start)
+          path.write_text(text[:start] + text[end:])
+          PY
           set -o pipefail
           python .github/apply_mc_navigation.py 2>&1 | tee /tmp/mc-navigation-patch.log
           gofmt -w arx-go/main.go arx-go/view.go arx-go/navigation.go arx-go/navigation_test.go
