@@ -121,7 +121,7 @@ func TestContextSensitiveFunctionKeyLabels(t *testing.T) {
 	archive := filepath.Join(directory, "sample.zip")
 	writeTestZip(t, archive)
 	m := initialModelAt(directory)
-	if got := m.f5Label(); got != "Pack" {
+	if got := m.f5Label(); got != "Copy" {
 		t.Fatalf("filesystem F5=%q", got)
 	}
 	if got := m.f8Label(); got != "Clear" {

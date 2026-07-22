@@ -99,7 +99,7 @@ func (m model) renderPane(p pane, width, rows int, active bool) string {
 func (m model) renderKeyBar(width int) string {
 	items := [][2]string{
 		{"F1", "Help"},
-		{"F2", "Mark"},
+		{"F2", "Archive"},
 		{"F3", "View"},
 		{"F4", "Test"},
 		{"F5", m.f5Label()},
@@ -142,7 +142,7 @@ func (m model) f5Label() string {
 			return "Extract"
 		}
 	}
-	return "Pack"
+	return "Copy"
 }
 
 func (m model) f8Label() string {
@@ -163,12 +163,13 @@ func (m model) renderModal(width int) string {
 		body.WriteString("Enter/Right     open directory or archive\n")
 		body.WriteString("Left/Backspace  parent directory / leave archive\n")
 		body.WriteString("Space/Insert    mark or unmark current item\n")
-		body.WriteString("F2 / Ctrl-A     mark all visible items\n")
+		body.WriteString("F2              create archive from selected filesystem items\n")
+		body.WriteString("Ctrl-A           mark all visible items\n")
 		body.WriteString("*                invert marks\n")
 		body.WriteString("Ctrl-U           clear marks\n")
 		body.WriteString("F3              view file or archive member\n")
 		body.WriteString("F4              test selected archive\n")
-		body.WriteString("F5              pack/extract/add according to panel direction\n")
+		body.WriteString("F5              copy/extract/add according to panel direction\n")
 		body.WriteString("F6              convert selected archive\n")
 		body.WriteString("F7              create a named directory\n")
 		body.WriteString("F8              delete archive entries; clear filesystem marks\n")
@@ -181,8 +182,10 @@ func (m model) renderModal(width int) string {
 		body.WriteString("Ctrl-\\          favorites; Ctrl-B adds current location\n")
 		body.WriteString("Ctrl-R          refresh panels\n")
 		body.WriteString("F10 or q        quit\n\n")
+		body.WriteString("F2 action:\n")
+		body.WriteString("  filesystem → filesystem   create a new archive\n\n")
 		body.WriteString("F5 direction:\n")
-		body.WriteString("  filesystem → filesystem   create a new archive\n")
+		body.WriteString("  filesystem → filesystem   copy selected entries\n")
 		body.WriteString("  archive → filesystem      extract selected entries\n")
 		body.WriteString("  filesystem → archive      add selected entries\n\n")
 		body.WriteString("Mouse: click selects, double-click opens, right/middle click marks, wheel scrolls.\n\n")
