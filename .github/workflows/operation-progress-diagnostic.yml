@@ -1,26 +1,50 @@
-name: Operation progress diagnostic
+name: Verify operation progress
 
 on:
   push:
     branches: [agent/operation-progress-cancel]
 
+permissions:
+  contents: write
+
 jobs:
   test:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/operation-progress-cancel
+      - name: Install archive tools
+        run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
           cache-dependency-path: arx-go/go.sum
-      - name: Run verbose tests
+      - name: Run complete verification
         run: |
-          set -o pipefail
-          cd arx-go
-          go test -race -v ./... 2>&1 | tee ../operation-progress-test.log
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: operation-progress-test
-          path: operation-progress-test.log
-          if-no-files-found: error
+          set +e
+          bash tests/test_arx.sh > operation-progress-test.log 2>&1
+          bash_rc=$?
+          (cd arx-go && go test -race -v ./...) >> operation-progress-test.log 2>&1
+          go_rc=$?
+          if [ "$bash_rc" -ne 0 ] || [ "$go_rc" -ne 0 ]; then
+            mkdir -p diagnostics
+            cp operation-progress-test.log diagnostics/operation-progress-test.log
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add diagnostics/operation-progress-test.log
+            git commit -m "Record operation progress test failure" || true
+            git push origin HEAD:agent/operation-progress-cancel
+            exit 1
+          fi
+          (cd arx-go && go build -trimpath -ldflags="-s -w" -o ../dist/arx-go .) >> operation-progress-test.log 2>&1
+          test -x dist/arx-go
+          file dist/arx-go >> operation-progress-test.log
+          rm -f diagnostics/operation-progress-test.log
+          rm .github/workflows/operation-progress-diagnostic.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Verify cancellable operation progress"
+          git push origin HEAD:agent/operation-progress-cancel
