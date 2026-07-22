@@ -24,18 +24,7 @@ jobs:
           cache-dependency-path: arx-go/go.sum
 
       - name: Test arx-go
-        run: |
-          set -o pipefail
-          cd arx-go
-          go test -race -v ./... 2>&1 | tee ../operation-progress-test.log
-
-      - name: Upload operation progress test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: operation-progress-test
-          path: operation-progress-test.log
-          if-no-files-found: error
+        run: cd arx-go && go test -race ./...
 
       - name: Build arx-go distribution binary
         run: cd arx-go && go build -trimpath -ldflags="-s -w" -o ../dist/arx-go .
