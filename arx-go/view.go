@@ -174,6 +174,7 @@ func (m model) renderModal(width int) string {
 		body.WriteString("Alt-F6          convert selected archive\n")
 		body.WriteString("F7              create a named directory\n")
 		body.WriteString("F8              move filesystem items to trash; delete archive entries\n")
+		body.WriteString("Ctrl-Z          restore the last ARX trash operation\n")
 		body.WriteString("F9              open command menu\n")
 		body.WriteString("Ctrl-H or .      show/hide dot files\n")
 		body.WriteString("Ctrl-L / Alt-C   change directory\n")

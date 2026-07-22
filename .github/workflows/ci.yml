@@ -10,14 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/undo-trash
-
-      - name: Integrate undo trash
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
-        run: |
-          sed -i 's/        replacement + "\\n\\n",/        lambda _match: replacement + "\\n\\n",/' scripts/integrate_undo_trash.py
-          python3 scripts/integrate_undo_trash.py
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
@@ -32,18 +24,7 @@ jobs:
           cache-dependency-path: arx-go/go.sum
 
       - name: Test arx-go
-        run: |
-          set -o pipefail
-          cd arx-go
-          go test -race -v ./... 2>&1 | tee ../undo-trash-test.log
-
-      - name: Upload undo trash test log
-        if: always() && github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
-        uses: actions/upload-artifact@v4
-        with:
-          name: undo-trash-test
-          path: undo-trash-test.log
-          if-no-files-found: error
+        run: cd arx-go && go test -race ./...
 
       - name: Build arx-go distribution binary
         run: cd arx-go && go build -trimpath -ldflags="-s -w" -o ../dist/arx-go .
@@ -60,18 +41,6 @@ jobs:
           name: arx-go-linux-amd64
           path: dist/arx-go
           if-no-files-found: error
-
-      - name: Commit integrated undo trash
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/undo-trash'
-        run: |
-          rm -f scripts/integrate_undo_trash.py .github/workflows/undo-trash-integrate.yml .trigger-undo-trash undo-trash-test.log
-          git fetch origin main --depth=1
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Add undo for last trash operation"
-          git push origin HEAD:agent/undo-trash
 
       - name: Commit rebuilt distribution binary
         if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
