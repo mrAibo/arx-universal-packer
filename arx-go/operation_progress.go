@@ -96,6 +96,10 @@ func cancelCurrentOperation() bool {
 	return true
 }
 
+func isOperationCancelled(err error) bool {
+	return errors.Is(err, context.Canceled)
+}
+
 func operationCancelled() error {
 	select {
 	case <-operationContext().Done():
@@ -149,6 +153,9 @@ func snapshotOperation() (operationSnapshot, bool) {
 
 func formatOperationStatus(snapshot operationSnapshot) string {
 	elapsed := time.Since(snapshot.started).Round(time.Second)
+	if elapsed < 0 {
+		elapsed = 0
+	}
 	if elapsed < time.Second {
 		elapsed = 0
 	}

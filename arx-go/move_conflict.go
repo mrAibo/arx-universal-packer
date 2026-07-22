@@ -67,7 +67,7 @@ func filesystemMoveDecisionPlans(entries []fileEntry, target string) ([]filesyst
 
 func (m model) runFilesystemMoveDecisionPlans(plans []filesystemMoveDecisionPlan, target string) (tea.Model, tea.Cmd) {
 	items := append([]filesystemMoveDecisionPlan(nil), plans...)
-	return m.startOperation(fmt.Sprintf("Moving %d selected item(s)...", len(items)), func() Result {
+	return m.startOperationProgress(fmt.Sprintf("Moving %d selected item(s)...", len(items)), len(items), func() Result {
 		return moveFilesystemDecisionPlans(items, target)
 	})
 }
@@ -76,14 +76,20 @@ func moveFilesystemDecisionPlans(plans []filesystemMoveDecisionPlan, target stri
 	moved := 0
 	skipped := 0
 	for _, plan := range plans {
+		if err := operationCancelled(); err != nil {
+			return Result{Err: err}
+		}
+		setOperationItem(filepath.Base(plan.source))
 		if plan.skip {
 			skipped++
+			advanceOperation()
 			continue
 		}
 		if err := moveFilesystemPath(plan.source, plan.target, plan.overwrite); err != nil {
 			return Result{Err: fmt.Errorf("move %s: %w (%d moved, %d skipped)", plan.source, err, moved, skipped)}
 		}
 		moved++
+		advanceOperation()
 	}
 	return Result{Output: fmt.Sprintf("Moved %d item(s) to %s, skipped %d", moved, target, skipped)}
 }

@@ -49,7 +49,7 @@ func (m model) startFilesystemCopy(entries []fileEntry, destination string) (tea
 
 func (m model) runFilesystemCopyPlans(plans []filesystemCopyPlan) (tea.Model, tea.Cmd) {
 	items := append([]filesystemCopyPlan(nil), plans...)
-	return m.startOperation(fmt.Sprintf("Copying %d selected item(s)...", len(items)), func() Result {
+	return m.startOperationProgress(fmt.Sprintf("Copying %d selected item(s)...", len(items)), len(items), func() Result {
 		return copyFilesystemPlans(items)
 	})
 }
@@ -86,14 +86,20 @@ func copyFilesystemPlans(plans []filesystemCopyPlan) Result {
 	copied := 0
 	skipped := 0
 	for _, plan := range plans {
+		if err := operationCancelled(); err != nil {
+			return Result{Err: err}
+		}
+		setOperationItem(filepath.Base(plan.source))
 		if plan.skip {
 			skipped++
+			advanceOperation()
 			continue
 		}
 		if err := copyFilesystemPath(plan.source, plan.target, plan.overwrite); err != nil {
 			return Result{Err: fmt.Errorf("copy %s: %w (%d copied, %d skipped)", plan.source, err, copied, skipped)}
 		}
 		copied++
+		advanceOperation()
 	}
 	return Result{Output: fmt.Sprintf("Copied %d item(s), skipped %d", copied, skipped)}
 }
