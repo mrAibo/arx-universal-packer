@@ -10,24 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-          fetch-depth: 0
-
-      - name: Apply one-shot filesystem copy integration
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/filesystem-copy'
-        run: |
-          git fetch origin main
-          python3 .github/patches/filesystem-copy.py
-          rm .github/patches/filesystem-copy.py
-          rmdir .github/patches 2>/dev/null || true
-          git checkout origin/main -- .github/workflows/ci.yml
-          gofmt -w arx-go/archive_edit.go arx-go/filesystem_copy.go arx-go/filesystem_copy_test.go arx-go/main.go arx-go/navigation_test.go arx-go/view.go
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/ci.yml .github/patches/filesystem-copy.py arx-go/archive_edit.go arx-go/filesystem_copy.go arx-go/filesystem_copy_test.go arx-go/main.go arx-go/navigation_test.go arx-go/view.go
-          git commit -m "Add safe filesystem copy"
-          git push origin HEAD:agent/filesystem-copy
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils

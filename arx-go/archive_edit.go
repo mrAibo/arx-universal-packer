@@ -22,6 +22,7 @@ type confirmKind int
 const (
 	confirmNone confirmKind = iota
 	confirmArchiveDelete
+	confirmFilesystemCopy
 )
 
 func (m model) startViewer() (tea.Model, tea.Cmd) {
@@ -246,17 +247,22 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "n", "q":
 		m.closeModal()
 		return m, nil
-	case "enter", "y", "f8":
-		if m.confirm != confirmArchiveDelete {
-			m.closeModal()
-			return m, nil
-		}
+	case "enter", "y", "f5", "f8":
+		confirmation := m.confirm
 		archive := m.confirmArchive
 		entries := append([]fileEntry(nil), m.confirmEntries...)
+		destination := m.confirmDestination
 		m.closeModal()
-		return m.startOperation(fmt.Sprintf("Deleting %d archive item(s)...", len(entries)), func() Result {
-			return deleteFromArchive(archive, entries, defaultLevel)
-		})
+		switch confirmation {
+		case confirmArchiveDelete:
+			return m.startOperation(fmt.Sprintf("Deleting %d archive item(s)...", len(entries)), func() Result {
+				return deleteFromArchive(archive, entries, defaultLevel)
+			})
+		case confirmFilesystemCopy:
+			return m.runFilesystemCopy(entries, destination, true)
+		default:
+			return m, nil
+		}
 	default:
 		return m, nil
 	}

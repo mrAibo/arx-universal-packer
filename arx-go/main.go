@@ -139,9 +139,10 @@ type model struct {
 	viewerOffset int
 	viewerColumn int
 
-	confirm        confirmKind
-	confirmArchive string
-	confirmEntries []fileEntry
+	confirm            confirmKind
+	confirmArchive     string
+	confirmEntries     []fileEntry
+	confirmDestination string
 
 	navMenuCursor int
 	navInputKind  navigationInputKind
@@ -262,7 +263,9 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ", "space", "insert":
 		active.toggleMark(rows)
 		m.status = active.markSummary()
-	case "f2", "ctrl+a":
+	case "f2":
+		return m.startPack()
+	case "ctrl+a":
 		active.markAll()
 		m.status = active.markSummary()
 	case "*":
@@ -581,6 +584,7 @@ func (m *model) closeModal() {
 	m.confirm = confirmNone
 	m.confirmArchive = ""
 	m.confirmEntries = nil
+	m.confirmDestination = ""
 }
 
 func (m *model) showError(err error) {
@@ -637,6 +641,21 @@ func (m model) startF5() (tea.Model, tea.Cmd) {
 		})
 	}
 
+	return m.startFilesystemCopy(entries, passive.path)
+}
+
+func (m model) startPack() (tea.Model, tea.Cmd) {
+	active := m.panes[m.active]
+	passive := m.panes[1-m.active]
+	if active.mode != paneFilesystem || passive.mode != paneFilesystem {
+		m.showError(fmt.Errorf("archive creation requires filesystem panels"))
+		return m, nil
+	}
+	entries, err := active.operationEntries()
+	if err != nil {
+		m.showError(err)
+		return m, nil
+	}
 	sources := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		sources = append(sources, entry.Path)
