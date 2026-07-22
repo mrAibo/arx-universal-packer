@@ -18,8 +18,7 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'agent/mc-mkdir-keybar'
         run: |
           git fetch origin main
-          git apply --check .github/patches/mc-mkdir-keybar.patch
-          git apply .github/patches/mc-mkdir-keybar.patch
+          python3 .github/patches/mc-mkdir-keybar.patch
           rm .github/patches/mc-mkdir-keybar.patch
           rmdir .github/patches 2>/dev/null || true
           git checkout origin/main -- .github/workflows/ci.yml
