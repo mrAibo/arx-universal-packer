@@ -57,7 +57,7 @@ func TestSpaceMarksMultipleItemsAndAdvances(t *testing.T) {
 	}
 }
 
-func TestCtrlAMarksAllAndF8Clears(t *testing.T) {
+func TestCtrlAMarksAllAndCtrlUClears(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"a.txt", "b.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
@@ -70,7 +70,7 @@ func TestCtrlAMarksAllAndF8Clears(t *testing.T) {
 	if got := len(m.panes[0].markedEntries()); got != 2 {
 		t.Fatalf("marked=%d want 2", got)
 	}
-	updated, _ = m.Update(runeKey("f8"))
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
 	m = updated.(model)
 	if got := len(m.panes[0].markedEntries()); got != 0 {
 		t.Fatalf("marked=%d want 0", got)
