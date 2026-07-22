@@ -23,6 +23,7 @@ const (
 	confirmNone confirmKind = iota
 	confirmArchiveDelete
 	confirmFilesystemCopy
+	confirmFilesystemMove
 )
 
 func (m model) startViewer() (tea.Model, tea.Cmd) {
@@ -260,6 +261,8 @@ func (m model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			})
 		case confirmFilesystemCopy:
 			return m.runFilesystemCopy(entries, destination, true)
+		case confirmFilesystemMove:
+			return m.runFilesystemMove(entries, destination, true)
 		default:
 			return m, nil
 		}

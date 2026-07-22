@@ -23,6 +23,7 @@ const (
 	navigationInputPath
 	navigationInputSearch
 	navigationInputMkdir
+	navigationInputMove
 )
 
 type navigationListKind int
@@ -53,6 +54,7 @@ var navigationMenuItems = []string{
 	"Add current location to favorites",
 	"Show/hide hidden files",
 	"Refresh panels",
+	"Convert selected archive",
 }
 
 func (m model) openNavigationMenu() model {
@@ -97,6 +99,8 @@ func (m model) updateNavigationMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 6:
 			m.reloadPanes()
 			m.status = "Panels refreshed"
+		case 7:
+			return m.startConvert()
 		}
 	}
 	return m, nil
@@ -110,7 +114,16 @@ func (m model) updateNavigationInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		value := strings.TrimSpace(m.navInputValue)
 		kind := m.navInputKind
+		sources := append([]string(nil), m.pendingSources...)
+		baseDir := m.pendingBaseDir
 		m.closeModal()
+		if kind == navigationInputMove {
+			entries := make([]fileEntry, 0, len(sources))
+			for _, source := range sources {
+				entries = append(entries, fileEntry{Path: source})
+			}
+			return m.startFilesystemMove(entries, value, baseDir)
+		}
 		if kind == navigationInputMkdir {
 			if err := m.panes[m.active].createDirectory(value); err != nil {
 				m.showError(err)

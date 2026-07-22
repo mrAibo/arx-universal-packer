@@ -103,7 +103,7 @@ func (m model) renderKeyBar(width int) string {
 		{"F3", "View"},
 		{"F4", "Test"},
 		{"F5", m.f5Label()},
-		{"F6", "Conv"},
+		{"F6", "Move"},
 		{"F7", "Mkdir"},
 		{"F8", m.f8Label()},
 		{"F9", "Menu"},
@@ -170,7 +170,8 @@ func (m model) renderModal(width int) string {
 		body.WriteString("F3              view file or archive member\n")
 		body.WriteString("F4              test selected archive\n")
 		body.WriteString("F5              copy/extract/add according to panel direction\n")
-		body.WriteString("F6              convert selected archive\n")
+		body.WriteString("F6              move/rename selected filesystem items\n")
+		body.WriteString("Alt-F6          convert selected archive\n")
 		body.WriteString("F7              create a named directory\n")
 		body.WriteString("F8              delete archive entries; clear filesystem marks\n")
 		body.WriteString("F9              open command menu\n")
@@ -188,6 +189,8 @@ func (m model) renderModal(width int) string {
 		body.WriteString("  filesystem → filesystem   copy selected entries\n")
 		body.WriteString("  archive → filesystem      extract selected entries\n")
 		body.WriteString("  filesystem → archive      add selected entries\n\n")
+		body.WriteString("F6 action:\n")
+		body.WriteString("  filesystem → filesystem   move items or rename one item\n\n")
 		body.WriteString("Mouse: click selects, double-click opens, right/middle click marks, wheel scrolls.\n\n")
 		body.WriteString(mutedStyle.Render("Enter or Esc closes this help"))
 	case modalMessage:

@@ -300,6 +300,8 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f5":
 		return m.startF5()
 	case "f6":
+		return m.startMove()
+	case "alt+f6":
 		return m.startConvert()
 	case "f7":
 		if active.mode != paneFilesystem {
