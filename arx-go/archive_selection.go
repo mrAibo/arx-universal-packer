@@ -336,7 +336,7 @@ func convertArchive(source, destination string, level int) Result {
 	}
 	defer os.RemoveAll(temporary)
 
-	extracted := extractSelected(source, nil, temporary)
+	extracted := extract(source, temporary)
 	if extracted.Err != nil {
 		return extracted
 	}
