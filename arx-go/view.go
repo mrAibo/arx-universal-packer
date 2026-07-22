@@ -207,6 +207,8 @@ func (m model) renderModal(width int) string {
 		body.WriteString(mutedStyle.Render("Esc/N cancels"))
 	case modalCopyConflict:
 		body.WriteString(m.renderCopyConflict())
+	case modalMoveConflict:
+		body.WriteString(m.renderMoveConflict())
 	case modalNavigationMenu, modalNavigationInput, modalNavigationList:
 		body.WriteString(m.renderNavigationModal())
 	}

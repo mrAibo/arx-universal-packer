@@ -41,26 +41,7 @@ func (m model) startMove() (tea.Model, tea.Cmd) {
 }
 
 func (m model) startFilesystemMove(entries []fileEntry, target, baseDir string) (tea.Model, tea.Cmd) {
-	target, err := normalizeMoveTarget(target, baseDir)
-	if err != nil {
-		m.showError(err)
-		return m, nil
-	}
-	_, conflicts, err := filesystemMovePlans(entries, target)
-	if err != nil {
-		m.showError(err)
-		return m, nil
-	}
-	if len(conflicts) > 0 {
-		m.modal = modalConfirm
-		m.modalTitle = "Replace existing items"
-		m.modalMessage = moveConflictMessage(conflicts, target)
-		m.confirm = confirmFilesystemMove
-		m.confirmEntries = append([]fileEntry(nil), entries...)
-		m.confirmDestination = target
-		return m, nil
-	}
-	return m.runFilesystemMove(entries, target, false)
+	return m.startFilesystemMoveWithConflicts(entries, target, baseDir)
 }
 
 func (m model) runFilesystemMove(entries []fileEntry, target string, overwrite bool) (tea.Model, tea.Cmd) {
