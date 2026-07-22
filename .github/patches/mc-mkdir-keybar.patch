@@ -1,0 +1,226 @@
+diff --git a/arx-go/panel.go b/arx-go/panel.go
+--- a/arx-go/panel.go
++++ b/arx-go/panel.go
+@@ -283,25 +283,33 @@ func (p *pane) goUp() error {
+ 	return nil
+ }
+ 
+-func (p *pane) createDirectory() error {
++func (p *pane) createDirectory(name string) error {
+ 	if p.mode != paneFilesystem {
+ 		return fmt.Errorf("cannot create a directory inside an archive yet")
+ 	}
+-	name := "new-folder"
+-	for i := 1; ; i++ {
+-		candidate := filepath.Join(p.path, name)
+-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+-			if err := os.Mkdir(candidate, 0o755); err != nil {
+-				return err
+-			}
+-			if err := p.loadDirectory(); err != nil {
+-				return err
+-			}
+-			p.selectName(name)
+-			return nil
+-		}
+-		name = fmt.Sprintf("new-folder-%d", i)
++	name = strings.TrimSpace(name)
++	if name == "" || name == "." || name == ".." {
++		return fmt.Errorf("enter a directory name")
++	}
++	if strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, '\x00') {
++		return fmt.Errorf("directory name must not contain path separators")
++	}
++
++	candidate := filepath.Join(p.path, name)
++	if _, err := os.Lstat(candidate); err == nil {
++		return fmt.Errorf("file or directory already exists: %s", name)
++	} else if !os.IsNotExist(err) {
++		return err
++	}
++	if err := os.Mkdir(candidate, 0o755); err != nil {
++		return err
++	}
++	if err := p.loadDirectory(); err != nil {
++		return err
+ 	}
++	p.selectName(name)
++	return nil
+ }
+ 
+ func (p pane) location() string {
+diff --git a/arx-go/navigation.go b/arx-go/navigation.go
+--- a/arx-go/navigation.go
++++ b/arx-go/navigation.go
+@@ -24,6 +24,7 @@ const (
+ 	navigationInputNone navigationInputKind = iota
+ 	navigationInputPath
+ 	navigationInputSearch
++	navigationInputMkdir
+ )
+@@ -112,6 +113,15 @@ func (m model) updateNavigationInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+ 		value := strings.TrimSpace(m.navInputValue)
+ 		kind := m.navInputKind
+ 		m.closeModal()
++		if kind == navigationInputMkdir {
++			if err := m.panes[m.active].createDirectory(value); err != nil {
++				m.showError(err)
++			} else {
++				m.status = "Directory created: " + value
++			}
++			return m, nil
++		}
+ 		if value == "" {
+ 			return m, nil
+ 		}
+diff --git a/arx-go/main.go b/arx-go/main.go
+--- a/arx-go/main.go
++++ b/arx-go/main.go
+@@ -300,12 +300,11 @@ func (m model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+ 	case "f6":
+ 		return m.startConvert()
+ 	case "f7":
+-		if err := active.createDirectory(); err != nil {
+-			m.showError(err)
+-		} else {
+-			m.status = "Directory created"
++		if active.mode != paneFilesystem {
++			m.showError(fmt.Errorf("cannot create a directory inside an archive yet"))
++			return m, nil
+ 		}
++		return m.openNavigationInput(navigationInputMkdir, "Create directory", ""), nil
+ 	case "f8":
+ 		return m.startArchiveDelete()
+ 	case "f9":
+diff --git a/arx-go/view.go b/arx-go/view.go
+--- a/arx-go/view.go
++++ b/arx-go/view.go
+@@ -104,10 +104,10 @@ func (m model) renderKeyBar(width int) string {
+ 		{"F2", "Mark"},
+ 		{"F3", "View"},
+ 		{"F4", "Test"},
+-		{"F5", "Copy"},
++		{"F5", m.f5Label()},
+ 		{"F6", "Conv"},
+ 		{"F7", "Mkdir"},
+-		{"F8", "Delete"},
++		{"F8", m.f8Label()},
+ 		{"F9", "Menu"},
+ 		{"F10", "Quit"},
+ 	}
+@@ -129,6 +129,34 @@ func (m model) renderKeyBar(width int) string {
+ 	return b.String()
+ }
+ 
++func (m model) f5Label() string {
++	active := m.panes[m.active]
++	passive := m.panes[1-m.active]
++	if active.mode == paneArchive {
++		return "Extract"
++	}
++	if passive.mode == paneArchive {
++		return "Add"
++	}
++	if len(active.markedEntries()) == 0 {
++		if entry, ok := active.selected(); ok && entry.IsArchive && !entry.IsDir {
++			return "Extract"
++		}
++	}
++	return "Pack"
++}
++
++func (m model) f8Label() string {
++	if m.panes[m.active].mode == paneArchive {
++		return "Delete"
++	}
++	return "Clear"
++}
++
+ func (m model) renderModal(width int) string {
+@@ -146,10 +174,10 @@ func (m model) renderModal(width int) string {
+ 		body.WriteString("Ctrl-U           clear marks\n")
+ 		body.WriteString("F3              view file or archive member\n")
+ 		body.WriteString("F4              test selected archive\n")
+-		body.WriteString("F5              copy/extract/add or create archive\n")
++		body.WriteString("F5              pack/extract/add according to panel direction\n")
+ 		body.WriteString("F6              convert selected archive\n")
+-		body.WriteString("F7              create directory\n")
+-		body.WriteString("F8              delete selected entries from opened archive\n")
++		body.WriteString("F7              create a named directory\n")
++		body.WriteString("F8              delete archive entries; clear filesystem marks\n")
+ 		body.WriteString("F9              open command menu\n")
+ 		body.WriteString("Ctrl-H or .      show/hide dot files\n")
+diff --git a/arx-go/navigation_test.go b/arx-go/navigation_test.go
+--- a/arx-go/navigation_test.go
++++ b/arx-go/navigation_test.go
+@@ -82,4 +82,70 @@ func TestF9OpensMenuAndCtrlHTogglesHidden(t *testing.T) {
+ 	if toggled.panes[0].showHidden == before {
+ 		t.Fatal("Ctrl-H did not toggle hidden files")
+ 	}
+ }
++
++func TestF7CreatesNamedDirectory(t *testing.T) {
++	directory := t.TempDir()
++	m := initialModelAt(directory)
++	updated, command := m.updateBrowser(tea.KeyMsg{Type: tea.KeyF7})
++	if command != nil {
++		t.Fatal("F7 should open a dialog without starting an operation")
++	}
++	dialog := updated.(model)
++	if dialog.modal != modalNavigationInput || dialog.navInputKind != navigationInputMkdir {
++		t.Fatalf("modal=%v input=%v", dialog.modal, dialog.navInputKind)
++	}
++	dialog.navInputValue = "Projects"
++	updated, _ = dialog.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
++	dialog = updated.(model)
++	if _, err := os.Stat(filepath.Join(directory, "Projects")); err != nil {
++		t.Fatalf("directory was not created: %v", err)
++	}
++	entry, ok := dialog.panes[0].selected()
++	if !ok || entry.Name != "Projects" {
++		t.Fatalf("selected=%q", entry.Name)
++	}
++}
++
++func TestCreateDirectoryRejectsUnsafeName(t *testing.T) {
++	directory := t.TempDir()
++	pane := newPane(directory)
++	if err := pane.createDirectory("../escape"); err == nil {
++		t.Fatal("expected path separator validation error")
++	}
++	if _, err := os.Stat(filepath.Join(directory, "..", "escape")); !os.IsNotExist(err) {
++		t.Fatalf("unsafe directory escaped active panel: %v", err)
++	}
++}
++
++func TestContextSensitiveFunctionKeyLabels(t *testing.T) {
++	directory := t.TempDir()
++	archive := filepath.Join(directory, "sample.zip")
++	writeTestZip(t, archive)
++	m := initialModelAt(directory)
++	if got := m.f5Label(); got != "Pack" {
++		t.Fatalf("filesystem F5=%q", got)
++	}
++	if got := m.f8Label(); got != "Clear" {
++		t.Fatalf("filesystem F8=%q", got)
++	}
++
++	m.panes[0].selectName("sample.zip")
++	if got := m.f5Label(); got != "Extract" {
++		t.Fatalf("selected archive F5=%q", got)
++	}
++
++	m.panes[0].mode = paneArchive
++	if got := m.f5Label(); got != "Extract" {
++		t.Fatalf("archive source F5=%q", got)
++	}
++	if got := m.f8Label(); got != "Delete" {
++		t.Fatalf("archive F8=%q", got)
++	}
++
++	m.panes[0].mode = paneFilesystem
++	m.panes[1].mode = paneArchive
++	if got := m.f5Label(); got != "Add" {
++		t.Fatalf("archive destination F5=%q", got)
++	}
++}
