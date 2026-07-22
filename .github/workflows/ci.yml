@@ -25,6 +25,9 @@ jobs:
           text = path.read_text()
           start = text.index('replace(\n    "arx-go/main.go",\n    "\\t\\tm.confirmArchive')
           end = text.index('replace(\n    "arx-go/view.go",', start)
+          text = text[:start] + text[end:]
+          start = text.index('replace(\n    "arx-go/view.go",\n    "\\tcase modalConfirm:')
+          end = text.index('# The exact spacing above', start)
           path.write_text(text[:start] + text[end:])
           PY
           set -o pipefail
