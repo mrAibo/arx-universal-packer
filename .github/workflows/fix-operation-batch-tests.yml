@@ -1,0 +1,51 @@
+name: Fix operation batch test compatibility
+
+on:
+  push:
+    branches: [agent/operation-progress-cancel]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/operation-progress-cancel
+      - name: Patch batch compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('arx-go/main.go')
+          text = p.read_text()
+          old = '''\tcase operationTickMsg:
+          \t\tif !m.busy {'''
+          new = '''\tcase tea.BatchMsg:
+          \t\t// Bubble Tea expands BatchMsg before Update. Unit tests call commands
+          \t\t// directly, so execute only the immediate operation result here.
+          \t\tfor _, command := range msg {
+          \t\t\tif command == nil {
+          \t\t\t\tcontinue
+          \t\t\t}
+          \t\t\tresult := command()
+          \t\t\tif _, ok := result.(operationMsg); ok {
+          \t\t\t\treturn m.Update(result)
+          \t\t\t}
+          \t\t}
+          \t\treturn m, nil
+          \tcase operationTickMsg:
+          \t\tif !m.busy {'''
+          if old not in text:
+              raise SystemExit('batch insertion point missing')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          gofmt -w arx-go/main.go
+          rm .github/workflows/fix-operation-batch-tests.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Keep direct command tests compatible with progress batches"
+          git push origin HEAD:agent/operation-progress-cancel
