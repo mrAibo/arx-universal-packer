@@ -1,0 +1,215 @@
+arx version: arx version 2.0.0
+  ok   compress tar.gz
+  ok   extract auto-detect
+  ok   jobs rejects non-int
+  ok   jobs rejects zero
+  ok   password prompt rejects non-interactive input
+  ok   explicit insecure password mode works
+  ok   convert tar.gz->tar.zst
+  ok   pipefail: arx -c fails when output unwritable (no silent success)
+  ok   delete_after on success
+  ok   split rejects invalid size
+  ok   verify completes before split
+  ok   tar traversal is rejected
+
+PASS=12 FAIL=0
+=== RUN   TestDetectArchiveFormatUsesContentBeforeExtension
+--- PASS: TestDetectArchiveFormatUsesContentBeforeExtension (0.00s)
+=== RUN   TestDetectArchiveFormatRecognizesExtensionlessArchives
+--- PASS: TestDetectArchiveFormatRecognizesExtensionlessArchives (0.00s)
+=== RUN   TestDetectArchiveFormatRecognizesExternalCompressedTar
+=== RUN   TestDetectArchiveFormatRecognizesExternalCompressedTar/bzip2
+=== RUN   TestDetectArchiveFormatRecognizesExternalCompressedTar/xz
+=== RUN   TestDetectArchiveFormatRecognizesExternalCompressedTar/zstd
+--- PASS: TestDetectArchiveFormatRecognizesExternalCompressedTar (0.02s)
+    --- PASS: TestDetectArchiveFormatRecognizesExternalCompressedTar/bzip2 (0.00s)
+    --- PASS: TestDetectArchiveFormatRecognizesExternalCompressedTar/xz (0.02s)
+    --- PASS: TestDetectArchiveFormatRecognizesExternalCompressedTar/zstd (0.00s)
+=== RUN   TestDetectArchiveFormatDoesNotTreatPlainGzipAsTar
+--- PASS: TestDetectArchiveFormatDoesNotTreatPlainGzipAsTar (0.00s)
+=== RUN   TestPanelRecognizesExtensionlessArchive
+--- PASS: TestPanelRecognizesExtensionlessArchive (0.00s)
+=== RUN   TestPreviewTextAndBinaryFiles
+--- PASS: TestPreviewTextAndBinaryFiles (0.00s)
+=== RUN   TestF3OpensViewer
+--- PASS: TestF3OpensViewer (0.00s)
+=== RUN   TestAddToExistingArchive
+--- PASS: TestAddToExistingArchive (0.02s)
+=== RUN   TestDeleteFromExistingArchive
+--- PASS: TestDeleteFromExistingArchive (0.02s)
+=== RUN   TestF5AddsSelectionToArchiveInOtherPanel
+--- PASS: TestF5AddsSelectionToArchiveInOtherPanel (0.02s)
+=== RUN   TestF8InsideArchiveRequiresConfirmation
+--- PASS: TestF8InsideArchiveRequiresConfirmation (0.01s)
+=== RUN   TestCompatibilityCompressDoesNotOverwrite
+--- PASS: TestCompatibilityCompressDoesNotOverwrite (0.00s)
+=== RUN   TestCompatibilityCompressPropagatesTarFailure
+--- PASS: TestCompatibilityCompressPropagatesTarFailure (0.00s)
+=== RUN   TestCompatibilityExtractRejectsTraversal
+tar: tar\: Removing leading `../' from member names: Not found in archive
+tar: Exiting with failure status due to previous errors
+--- PASS: TestCompatibilityExtractRejectsTraversal (0.00s)
+=== RUN   TestCompatibilityConvertPreservesArchiveRoot
+  adding: docs/ (stored 0%)
+  adding: docs/readme.txt (stored 0%)
+--- PASS: TestCompatibilityConvertPreservesArchiveRoot (0.03s)
+=== RUN   TestArchiveExtractionMembersSkipsNonEmptyDirectories
+--- PASS: TestArchiveExtractionMembersSkipsNonEmptyDirectories (0.00s)
+=== RUN   TestCompressExtractRoundtrip
+  adding: data/ (stored 0%)
+  adding: data/a.txt (stored 0%)
+  adding: data/b.log (stored 0%)
+
+7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20
+ 64-bit locale=C.UTF-8 Threads:4 OPEN_MAX:65536
+
+Scanning the drive:
+1 folder, 2 files, 8 bytes (1 KiB)
+
+Creating archive: /tmp/TestCompressExtractRoundtrip1665913301/001/out_7z/bk.7z
+
+Add new data to archive: 1 folder, 2 files, 8 bytes (1 KiB)
+
+
+Files read from disk: 2
+Archive size: 186 bytes (1 KiB)
+Everything is Ok
+
+7-Zip 23.01 (x64) : Copyright (c) 1999-2023 Igor Pavlov : 2023-06-20
+ 64-bit locale=C.UTF-8 Threads:4 OPEN_MAX:65536
+
+Scanning the drive for archives:
+1 file, 186 bytes (1 KiB)
+
+Extracting archive: /tmp/TestCompressExtractRoundtrip1665913301/001/out_7z/bk.7z
+--
+Path = /tmp/TestCompressExtractRoundtrip1665913301/001/out_7z/bk.7z
+Type = 7z
+Physical Size = 186
+Headers Size = 174
+Method = LZMA2:12
+Solid = +
+Blocks = 1
+
+Everything is Ok
+
+Files: 2
+Size:       8
+Compressed: 186
+--- PASS: TestCompressExtractRoundtrip (0.94s)
+=== RUN   TestDetectFormat
+--- PASS: TestDetectFormat (0.00s)
+=== RUN   TestConvert
+--- PASS: TestConvert (0.01s)
+=== RUN   TestCopyConflictReplaceAndSkip
+--- PASS: TestCopyConflictReplaceAndSkip (0.01s)
+=== RUN   TestCopyConflictRenameDoesNotOverwrite
+--- PASS: TestCopyConflictRenameDoesNotOverwrite (0.00s)
+=== RUN   TestCopyConflictRejectsUnsafeRename
+--- PASS: TestCopyConflictRejectsUnsafeRename (0.00s)
+=== RUN   TestCopyConflictDialogApplyAllSkip
+--- PASS: TestCopyConflictDialogApplyAllSkip (0.00s)
+=== RUN   TestSuggestedCopyNameSkipsExistingCandidates
+--- PASS: TestSuggestedCopyNameSkipsExistingCandidates (0.00s)
+=== RUN   TestCopyFilesystemCopiesFileDirectoryAndSymlink
+--- PASS: TestCopyFilesystemCopiesFileDirectoryAndSymlink (0.00s)
+=== RUN   TestFilesystemCopyRejectsDestinationInsideSource
+--- PASS: TestFilesystemCopyRejectsDestinationInsideSource (0.00s)
+=== RUN   TestF5CopyRequiresOverwriteConfirmation
+--- PASS: TestF5CopyRequiresOverwriteConfirmation (0.00s)
+=== RUN   TestF2OpensArchiveCreationDialog
+--- PASS: TestF2OpensArchiveCreationDialog (0.00s)
+=== RUN   TestReplaceFilesystemPathKeepsDestinationWhenSourceIsMissing
+--- PASS: TestReplaceFilesystemPathKeepsDestinationWhenSourceIsMissing (0.00s)
+=== RUN   TestMoveFilesystemRenamesFile
+--- PASS: TestMoveFilesystemRenamesFile (0.00s)
+=== RUN   TestMoveFilesystemMovesDirectoryToPanel
+--- PASS: TestMoveFilesystemMovesDirectoryToPanel (0.00s)
+=== RUN   TestMoveRejectsDestinationInsideSource
+--- PASS: TestMoveRejectsDestinationInsideSource (0.00s)
+=== RUN   TestF6MoveRequiresOverwriteConfirmation
+    filesystem_move_test.go:95: modal=301 confirm=0
+--- FAIL: TestF6MoveRequiresOverwriteConfirmation (0.00s)
+=== RUN   TestF6SameDirectoryDefaultsToRenameName
+--- PASS: TestF6SameDirectoryDefaultsToRenameName (0.00s)
+=== RUN   TestMoveMultipleItemsRequiresDirectoryTarget
+--- PASS: TestMoveMultipleItemsRequiresDirectoryTarget (0.00s)
+=== RUN   TestMoveFilesystemCrossDeviceFallback
+--- PASS: TestMoveFilesystemCrossDeviceFallback (0.00s)
+=== RUN   TestTrashFilesystemMovesFileAndWritesMetadata
+--- PASS: TestTrashFilesystemMovesFileAndWritesMetadata (0.00s)
+=== RUN   TestTrashFilesystemUsesCollisionSafeName
+--- PASS: TestTrashFilesystemUsesCollisionSafeName (0.00s)
+=== RUN   TestTrashFilesystemPreservesSymlink
+--- PASS: TestTrashFilesystemPreservesSymlink (0.00s)
+=== RUN   TestFilesystemTrashSummaryDoesNotFollowSymlink
+--- PASS: TestFilesystemTrashSummaryDoesNotFollowSymlink (0.00s)
+=== RUN   TestF8OpensTrashConfirmation
+--- PASS: TestF8OpensTrashConfirmation (0.00s)
+=== RUN   TestTrashInfoUsesProvidedDeletionTime
+--- PASS: TestTrashInfoUsesProvidedDeletionTime (0.00s)
+=== RUN   TestMoveConflictSkipKeepsSource
+--- PASS: TestMoveConflictSkipKeepsSource (0.00s)
+=== RUN   TestMoveConflictRenameMovesWithoutOverwrite
+--- PASS: TestMoveConflictRenameMovesWithoutOverwrite (0.00s)
+=== RUN   TestMoveConflictApplyAllSkip
+--- PASS: TestMoveConflictApplyAllSkip (0.00s)
+=== RUN   TestMoveConflictRejectsUnsafeRename
+--- PASS: TestMoveConflictRejectsUnsafeRename (0.00s)
+=== RUN   TestF6ConflictOpensMoveConflictDialog
+--- PASS: TestF6ConflictOpensMoveConflictDialog (0.00s)
+=== RUN   TestQuickSearchWrapsAndMatchesCaseInsensitive
+--- PASS: TestQuickSearchWrapsAndMatchesCaseInsensitive (0.00s)
+=== RUN   TestOpenLocationAndHistory
+--- PASS: TestOpenLocationAndHistory (0.00s)
+=== RUN   TestFavoritesPersistWithoutDuplicates
+--- PASS: TestFavoritesPersistWithoutDuplicates (0.00s)
+=== RUN   TestF9OpensMenuAndCtrlHTogglesHidden
+--- PASS: TestF9OpensMenuAndCtrlHTogglesHidden (0.00s)
+=== RUN   TestF7CreatesNamedDirectory
+--- PASS: TestF7CreatesNamedDirectory (0.00s)
+=== RUN   TestCreateDirectoryRejectsUnsafeName
+--- PASS: TestCreateDirectoryRejectsUnsafeName (0.00s)
+=== RUN   TestContextSensitiveFunctionKeyLabels
+--- PASS: TestContextSensitiveFunctionKeyLabels (0.00s)
+=== RUN   TestOperationProgressSnapshot
+--- PASS: TestOperationProgressSnapshot (0.00s)
+=== RUN   TestCancelCurrentOperation
+--- PASS: TestCancelCurrentOperation (0.00s)
+=== RUN   TestCancellableReaderStopsAfterCancel
+--- PASS: TestCancellableReaderStopsAfterCancel (0.00s)
+=== RUN   TestOperationElapsedNeverNegative
+--- PASS: TestOperationElapsedNeverNegative (0.00s)
+=== RUN   TestInitialModelCreatesTwoFilesystemPanels
+--- PASS: TestInitialModelCreatesTwoFilesystemPanels (0.00s)
+=== RUN   TestSpaceMarksMultipleItemsAndAdvances
+--- PASS: TestSpaceMarksMultipleItemsAndAdvances (0.00s)
+=== RUN   TestCtrlAMarksAllAndCtrlUClears
+--- PASS: TestCtrlAMarksAllAndCtrlUClears (0.00s)
+=== RUN   TestF2WithMarkedItemsOpensNamedArchiveDialog
+--- PASS: TestF2WithMarkedItemsOpensNamedArchiveDialog (0.00s)
+=== RUN   TestArchiveDialogNameCanBeReplaced
+--- PASS: TestArchiveDialogNameCanBeReplaced (0.00s)
+=== RUN   TestNormalizeArchiveNameStripsKnownExtension
+--- PASS: TestNormalizeArchiveNameStripsKnownExtension (0.00s)
+=== RUN   TestCompressManyCreatesArchiveWithMultipleSources
+--- PASS: TestCompressManyCreatesArchiveWithMultipleSources (0.01s)
+=== RUN   TestSelectiveExtractionFromOpenedArchive
+--- PASS: TestSelectiveExtractionFromOpenedArchive (0.01s)
+=== RUN   TestMouseClickSelectsAndRightClickMarks
+--- PASS: TestMouseClickSelectsAndRightClickMarks (0.00s)
+=== RUN   TestMouseDoubleClickOpensDirectory
+--- PASS: TestMouseDoubleClickOpensDirectory (0.00s)
+=== RUN   TestKeyBarUsesFunctionKeyNames
+--- PASS: TestKeyBarUsesFunctionKeyNames (0.00s)
+=== RUN   TestArchivePathNormalizationRejectsTraversal
+--- PASS: TestArchivePathNormalizationRejectsTraversal (0.00s)
+=== RUN   TestArchiveHierarchyBuildsImmediateChildren
+--- PASS: TestArchiveHierarchyBuildsImmediateChildren (0.00s)
+=== RUN   TestHiddenFilesToggle
+--- PASS: TestHiddenFilesToggle (0.00s)
+=== RUN   TestParse7zPathsSkipsArchiveHeader
+--- PASS: TestParse7zPathsSkipsArchiveHeader (0.00s)
+FAIL
+FAIL	github.com/mrAibo/arx-go	1.156s
+FAIL
