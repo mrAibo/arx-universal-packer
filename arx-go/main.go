@@ -144,6 +144,12 @@ type model struct {
 	confirmEntries     []fileEntry
 	confirmDestination string
 
+	copyPlans            []filesystemCopyPlan
+	copyConflictIndex    int
+	copyConflictAction   copyConflictAction
+	copyConflictApplyAll bool
+	copyConflictRename   string
+
 	navMenuCursor int
 	navInputKind  navigationInputKind
 	navInputValue string
@@ -437,6 +443,8 @@ func (m model) updateModal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateViewer(msg)
 	case modalConfirm:
 		return m.updateConfirm(msg)
+	case modalCopyConflict:
+		return m.updateCopyConflict(msg)
 	case modalNavigationMenu:
 		return m.updateNavigationMenu(msg)
 	case modalNavigationInput:

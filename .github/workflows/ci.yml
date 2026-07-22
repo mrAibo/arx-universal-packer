@@ -10,21 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/copy-conflict-dialog
-          fetch-depth: 0
-
-      - name: Apply one-shot copy conflict integration
-        run: |
-          python .github/apply-copy-conflict.py
-          gofmt -w arx-go/copy_conflict.go arx-go/copy_conflict_test.go arx-go/filesystem_copy.go arx-go/main.go arx-go/view.go
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          rm .github/apply-copy-conflict.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Integrate copy conflict decisions"
-          git push origin HEAD:agent/copy-conflict-dialog
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils
@@ -56,3 +41,16 @@ jobs:
           name: arx-go-linux-amd64
           path: dist/arx-go
           if-no-files-found: error
+
+      - name: Commit rebuilt distribution binary
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          if git diff --quiet -- dist/arx-go; then
+            echo "dist/arx-go is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/arx-go
+          git commit -m "Rebuild arx-go distribution binary"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
