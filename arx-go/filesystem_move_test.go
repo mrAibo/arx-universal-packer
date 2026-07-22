@@ -88,13 +88,13 @@ func TestF6MoveRequiresOverwriteConfirmation(t *testing.T) {
 	}
 	updated, command = dialog.updateModal(tea.KeyMsg{Type: tea.KeyEnter})
 	if command != nil {
-		t.Fatal("move conflict should wait for confirmation")
+		t.Fatal("move conflict should wait for a decision")
 	}
 	confirmation := updated.(model)
-	if confirmation.modal != modalConfirm || confirmation.confirm != confirmFilesystemMove {
-		t.Fatalf("modal=%v confirm=%v", confirmation.modal, confirmation.confirm)
+	if confirmation.modal != modalMoveConflict || confirmation.moveConflictAction != copyConflictReplace {
+		t.Fatalf("modal=%v action=%v", confirmation.modal, confirmation.moveConflictAction)
 	}
-	updated, command = confirmation.updateConfirm(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, command = confirmation.updateMoveConflict(tea.KeyMsg{Type: tea.KeyEnter})
 	if command == nil {
 		t.Fatal("confirmed move did not start")
 	}

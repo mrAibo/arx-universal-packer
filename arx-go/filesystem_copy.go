@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,7 +198,7 @@ func copyFilesystemFile(source, destination string, info os.FileInfo, overwrite 
 		temporary.Close()
 		return err
 	}
-	if _, err := io.Copy(temporary, input); err != nil {
+	if _, err := copyWithOperationProgress(temporary, input); err != nil {
 		temporary.Close()
 		return err
 	}

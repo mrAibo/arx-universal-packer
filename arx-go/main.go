@@ -111,6 +111,7 @@ const (
 
 type operationMsg struct {
 	result Result
+	state  *operationState
 }
 
 type model struct {
@@ -208,9 +209,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ensureVisible()
 		return m, nil
+	case tea.BatchMsg:
+		// Bubble Tea expands BatchMsg before Update. Unit tests call commands
+		// directly, so execute only the immediate operation result here.
+		for _, command := range msg {
+			if command == nil {
+				continue
+			}
+			result := command()
+			if _, ok := result.(operationMsg); ok {
+				return m.Update(result)
+			}
+		}
+		return m, nil
+	case operationTickMsg:
+		if !m.busy {
+			return m, nil
+		}
+		if snapshot, ok := snapshotOperation(); ok {
+			m.status = formatOperationStatus(snapshot)
+		}
+		return m, operationTick()
 	case operationMsg:
+		finishOperation(msg.state)
 		m.busy = false
-		if msg.result.Err != nil {
+		if isOperationCancelled(msg.result.Err) {
+			m.status = "Operation cancelled"
+			m.reloadPanes()
+		} else if msg.result.Err != nil {
 			m.modal = modalMessage
 			m.modalTitle = "Operation failed"
 			m.modalMessage = msg.result.Err.Error()
@@ -232,14 +258,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
+		if m.busy {
+			if msg.String() == "esc" || msg.String() == "ctrl+c" {
+				cancelCurrentOperation()
+				m.status = "Cancelling operation…"
+			}
+			return m, nil
+		}
 		if msg.String() == "ctrl+c" || msg.String() == "f10" {
 			return m, tea.Quit
 		}
 		if m.modal != modalNone {
 			return m.updateModal(msg)
-		}
-		if m.busy {
-			return m, nil
 		}
 		return m.updateBrowser(msg)
 	default:
@@ -740,14 +770,6 @@ func (m model) startArchiveTest() (tea.Model, tea.Cmd) {
 	return m.startOperation("Testing archive...", func() Result {
 		return testArchive(path)
 	})
-}
-
-func (m model) startOperation(status string, fn func() Result) (tea.Model, tea.Cmd) {
-	m.busy = true
-	m.status = status
-	return m, func() tea.Msg {
-		return operationMsg{result: fn()}
-	}
 }
 
 func (m *model) reloadPanes() {

@@ -15,24 +15,38 @@ type Result struct {
 }
 
 func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	ctx := operationContext()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 // runIn runs a command with the working directory changed to dir.
 func runIn(dir, name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	ctx := operationContext()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 // runCapture runs a command and returns its combined output.
 func runCapture(name string, args ...string) (string, error) {
-	out, err := exec.Command(name, args...).CombinedOutput()
+	ctx := operationContext()
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	if ctx.Err() != nil {
+		return string(out), ctx.Err()
+	}
 	return string(out), err
 }
 
