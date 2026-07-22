@@ -1,287 +1,263 @@
-# ARX - Universal Archive Manager
+# ARX — Universal Archive Commander
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Bash](https://img.shields.io/badge/language-bash-orange.svg)
-![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)
+![Language](https://img.shields.io/badge/language-Go-00ADD8.svg)
+![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)
 
-**ARX** (Archive eXtractor) is a modern, powerful, and user-friendly archive manager for Linux. It unifies `tar`, `zip`, `7z`, `zstd`, and `xz` under a single, intuitive interface. No more memorizing complex flags like `tar -czvf` or `tar -xzvf`—ARX handles it all with smart defaults and beautiful output.
+**ARX** is a keyboard-driven, dual-pane file and archive manager for Linux. Its interface follows the familiar Midnight Commander workflow while adding archive creation, extraction, testing, conversion, safe file operations, progress reporting, cancellation, Trash integration, and undo.
 
-![ARX Demo](svgs/ep01_intro.svg)
-
----
-
-## ✨ Features
-
-### 🚀 Core Capabilities
-- **Unified Interface**: One command for all formats (`tar`, `gz`, `bz2`, `xz`, `zst`, `zip`, `7z`).
-- **Automatic Detection**: Existing archives are recognized by file signature, even when their extension is missing or misleading.
-- **Smart Extraction**: Auto-detects formats and handles "tarbombs" (archives without a root folder).
-- **Format Conversion**: Easily convert archives (e.g., `zip` → `tar.zst`) with `arx convert`.
-- **Incremental Backups**: Create snapshot-based differential backups to save space.
-- **Archive Splitting**: Split large archives into chunks (e.g., for email or FAT32).
-- **High Performance**: Multi-threaded compression (auto-detects CPU cores) and **Zstandard** support.
-
-### 🎨 User Experience
-- **Beautiful Output**: Color-coded messages, emojis, and real-time progress bars (`pv` integration).
-- **Interactive Mode**: A TUI (Text User Interface) wizard for guided operations.
-- **GUI Integration**: Context menus for Nautilus, Dolphin, and Thunar ("Compress with ARX").
-- **Bash Completion**: Intelligent tab completion for files and options.
-- **Safety First**: Dry-run mode, verification (`--verify`), and overwrite protection.
+The repository also contains the original Bash-based archive utility. The Go commander in `arx-go/` is the primary interactive application.
 
 ---
 
-## 📦 Installation
+## Highlights
 
-### Quick Install (Recommended)
+- Dual-pane terminal file manager
+- Keyboard and mouse navigation
+- Archive creation, extraction, viewing, testing, editing, and conversion
+- Support for `tar`, `tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, `zip`, and `7z`
+- Midnight Commander-style copy and move conflict dialogs
+- Safe copy with temporary targets, atomic completion, and rollback
+- Safe move with cross-filesystem (`EXDEV`) fallback
+- Desktop Trash integration instead of irreversible deletion
+- `Ctrl+Z` restore for the latest Trash batch in the current session
+- Operation progress with cancellation
+- Protection against unintended overwrites
+- Tests for normal paths, conflicts, rollback, cross-filesystem behavior, and restore safety
+
+---
+
+## Interface
+
+ARX opens with two filesystem panels. The active panel is the source for most operations, while the opposite panel is used as the default destination for copy, move, extraction, and related commands.
+
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Tab` | Switch active panel |
+| Arrow keys | Navigate files and directories |
+| `Enter` | Open a directory or archive |
+| `Backspace` | Go to the parent directory |
+| `F1` | Help |
+| `F2` | Create archive |
+| `F3` | View file or archive member |
+| `F4` | Test archive |
+| `F5` | Copy selected item(s) |
+| `F6` | Move or rename selected item(s) |
+| `Alt+F6` | Convert archive |
+| `F7` | Create directory |
+| `F8` | Move selected item(s) to Trash |
+| `Ctrl+Z` | Restore the latest Trash batch |
+| `F9` | Menu |
+| `F10` | Quit |
+| `Esc` | Close a dialog or cancel a running operation |
+
+The exact dialog options depend on the current selection. For example, archive actions appear when an archive is selected, while normal files and directories expose filesystem operations.
+
+---
+
+## Safe filesystem operations
+
+ARX treats file operations as recoverable transactions wherever practical.
+
+### Copy
+
+Copy operations write through temporary targets and complete only after the destination is ready. If an operation fails or is cancelled, ARX removes incomplete output and preserves the original source.
+
+When a destination already exists, ARX presents an MC-style conflict dialog instead of silently overwriting it.
+
+### Move
+
+Moves use the native filesystem rename operation when possible. When source and destination are on different filesystems, ARX automatically falls back to a guarded copy-and-remove flow.
+
+The source is removed only after the destination has been completed successfully. Failure and cancellation paths retain the source and clean up incomplete output.
+
+### Trash and undo
+
+`F8` sends files and directories to the freedesktop-compatible Trash location instead of permanently deleting them.
+
+After a successful Trash operation, `Ctrl+Z` can restore the latest batch from the current ARX session. Restore never overwrites a path that has since been recreated. Conflicting entries remain safely in Trash and can be retried later.
+
+The undo history is intentionally limited to the latest filesystem Trash operation in the running ARX process. It does not restore archive-member deletions or arbitrary items placed in Trash by other applications.
+
+---
+
+## Archive support
+
+| Format | Common extensions | External tool |
+|---|---|---|
+| TAR | `.tar` | `tar` |
+| Gzip TAR | `.tar.gz`, `.tgz` | `tar`, `gzip` |
+| Bzip2 TAR | `.tar.bz2`, `.tbz2` | `tar`, `bzip2` |
+| XZ TAR | `.tar.xz`, `.txz` | `tar`, `xz` |
+| Zstandard TAR | `.tar.zst`, `.tzst` | `tar`, `zstd` |
+| ZIP | `.zip` | `zip`, `unzip` |
+| 7-Zip | `.7z` | `7z` or `7zz` |
+
+Only the tools required for the formats you use need to be installed. ARX reports a clear error when a required helper program is unavailable.
+
+---
+
+## Installation
+
+### Use the included Linux binary
+
+The repository contains a prebuilt binary at:
+
+```text
+dist/arx-go
+```
+
+After cloning the repository:
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/arx.git
-cd arx
-
-# Install system-wide
-sudo cp bin/arx /usr/local/bin/
-sudo chmod +x /usr/local/bin/arx
-
-# Install man page
-sudo cp man/arx.1 /usr/local/share/man/man1/
-sudo mandb
+git clone https://github.com/mrAibo/arx-universal-packer.git
+cd arx-universal-packer
+chmod +x dist/arx-go
+./dist/arx-go
 ```
 
-### Dependencies
-ARX works best with these tools:
-- **Required**: `bash` (4.4+), `tar`, `gzip`
-- **Recommended**: `zstd` (fast compression), `pv` (progress bars), `pigz` (parallel gzip)
-- **Optional**: `xz`, `bzip2`, `7z`, `zip`, `dialog` (for interactive mode)
-
----
-
-## 📖 Usage & Tutorials
-
-### 1. Basic Compression & Extraction
-Compress files easily with smart defaults. ARX automatically chooses the best settings.
-
-![Basic Usage](svgs/ep02_basic.svg)
+To install it system-wide:
 
 ```bash
-# Compress a directory (default: tar.gz)
-arx -c tar.gz -n backup documents/
-
-# Extract an archive (auto-detects format)
-arx backup.tar.gz
+sudo install -Dm755 dist/arx-go /usr/local/bin/arx
+arx
 ```
 
-### 2. Format Conversion
-Convert archives from one format to another without manual extraction.
+### Build from source
 
-![Conversion](svgs/ep06_convert.svg)
+The Go module is located in `arx-go/`.
 
-```bash
-# Convert zip to tar.zst (Zstandard)
-arx convert input.zip to output.tar.zst
-```
+Requirements:
 
-### 3. Advanced Options
-Use exclusions, password protection, and parallel processing.
+- Linux
+- Go version declared in `arx-go/go.mod`
 
-![Advanced](svgs/ep03_advanced.svg)
+Build:
 
 ```bash
-# Exclude files and use max compression
-arx -c tar.xz -L 9 -e "*.log" -e "node_modules/" project/
-
-# Password protection (zip/7z)
-arx -c zip -p -n secret sensitive_data/
-```
-
-### 4. Incremental Backups
-Save space by backing up only changed files.
-
-![Incremental](svgs/ep04_incremental.svg)
-
-```bash
-# Level 0 (Full Backup)
-arx -c tar.gz --incremental backup.snar -n full_backup /data
-
-# Level 1 (Changes Only)
-arx -c tar.gz --incremental backup.snar -n inc_backup /data
+git clone https://github.com/mrAibo/arx-universal-packer.git
+cd arx-universal-packer/arx-go
+go build -o ../dist/arx-go .
+../dist/arx-go
 ```
 
 ---
 
-## 🎨 Supported Formats
+## Install archive helpers
 
-| Format      | Extension(s)        | Compression | Speed      | Ratio           | Notes                |
-|-------------|---------------------|-------------|------------|-----------------|----------------------|
-| **tar**     | .tar                | None        | ⚡⚡⚡⚡⚡ | -               | Container only       |
-| **tar.gz**  | .tar.gz, .tgz       | gzip        | ⚡⚡⚡⚡   | 📦📦📦         | Good balance         |
-| **tar.bz2** | .tar.bz2, .tbz2     | bzip2       | ⚡⚡⚡     | 📦📦📦📦       | Better compression   |
-| **tar.xz**  | .tar.xz, .txz       | xz/LZMA     | ⚡⚡       | 📦📦📦📦📦     | Best compression     |
-| **tar.zst** | .tar.zst            | zstd        | ⚡⚡⚡⚡⚡ | 📦📦📦📦       | Best speed/ratio     |
-| **zip**     | .zip                | deflate     | ⚡⚡⚡     | 📦📦📦         | Cross-platform       |
-| **7z**      | .7z                 | LZMA2       | ⚡⚡       | 📦📦📦📦📦     | Maximum compression  | 
-
-**Legend:** ⚡ = Speed, 📦 = Compression ratio
-
----
-
-## 🎓 Advanced Usage
-
-### Pattern-Based Filtering
-
-ARX provides powerful filtering options to include or exclude specific files.
-
-#### Direct Patterns
-You can use glob patterns directly in the command line:
+### Debian / Ubuntu
 
 ```bash
-# Exclude temporary files and logs
-arx -c tar.gz -e "*.tmp" -e "*.log" -e "temp/" src/
-
-# Include only documentation
-arx -c zip -i "*.md" -i "*.txt" -i "*.pdf" docs/
-
-# Complex exclusions
-arx -c tar.gz \
-  -e "node_modules/" \
-  -e ".git/" \
-  -e "*.lock" \
-  -e "build/" \
-  -e "dist/" \
-  project/
+sudo apt install tar gzip bzip2 xz-utils zstd zip unzip p7zip-full
 ```
 
-#### Pattern Files
-For complex projects, you can list patterns in a file:
+### Fedora / RHEL
 
 ```bash
-# Create a patterns file
-echo "-node_modules/" > .arxignore
-echo "-*.log" >> .arxignore
-echo "+src/" >> .arxignore
-
-# Use it with -f
-arx -c tar.gz -f .arxignore -n project-backup .
+sudo dnf install tar gzip bzip2 xz zstd zip unzip p7zip
 ```
 
----
+### Arch Linux
 
-## ⚙️ Configuration
-
-Create `~/.config/arx/config` to set your persistent preferences.
-
-### Configuration Parameters
-
-| Parameter | Description | Default | Example |
-|-----------|-------------|---------|---------|
-| `default_format` | Default archive format | `tar.gz` | `tar.zst` |
-| `default_level` | Compression level (0-9) | `3` | `9` |
-| `default_exclude` | Global exclude patterns | (empty) | `*.tmp *.log .git/` |
-| `default_jobs` | Number of threads (0=auto) | `0` | `4` |
-| `use_spinner` | Use spinner if pv missing | `true` | `false` |
-
-### Example Config File
-```ini
-# ~/.config/arx/config
-
-# Use Zstandard by default for speed
-default_format = tar.zst
-
-# Exclude git and temp files globally
-default_exclude = .git/ *.tmp *.swp __pycache__/
-
-# Use 4 threads for compression
-default_jobs = 4
-```
-
----
-
-## 🖥️ Interactive Mode & GUI
-
-### Interactive TUI
-Simply run `arx` without arguments to start the interactive wizard.
-It uses `dialog` (if installed) or a text-based menu to guide you through:
-1.  **Mode Selection** (Compress, Extract, List, Convert)
-2.  **Format Selection** (tar.gz, zip, etc.)
-3.  **File Selection** (with path completion)
-4.  **Options** (Password, Split, etc.)
-
-![Interactive Demo](svgs/ep01_intro.svg)
-
-### GUI Integration
-ARX integrates directly into your file manager's context menu.
-- **Right-click** > **Compress with ARX**
-- **Right-click** > **Extract with ARX**
-
-Supported File Managers:
-- **Nautilus** (GNOME)
-- **Dolphin** (KDE)
-- **Thunar** (XFCE)
-
----
-
-## 🚀 Progress Bar & Performance
-
-ARX automatically detects if `pv` (Pipe Viewer) is installed to show beautiful progress bars.
-
-```
-ℹ Creating backup.tar.gz (2.4 GB)
-2.40GB 0:01:15 [32.0MB/s] [==================>] 100%
-```
-
-If `pv` is missing, it falls back to a sleek spinner animation so you still know it's working.
-
-**Performance Tips:**
-- **Multithreading**: ARX automatically uses all available CPU cores for `xz`, `zstd`, and `pigz`.
-- **Fastest Backup**: Use `tar.zst` (Zstandard) for the best speed-to-ratio balance.
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### "Command not found"
-**Solution**: Install missing dependencies.
 ```bash
-# Ubuntu/Debian
-sudo apt install tar gzip zstd pv
-
-# Fedora/RHEL
-sudo dnf install tar gzip zstd pv
+sudo pacman -S tar gzip bzip2 xz zstd zip unzip 7zip
 ```
 
-#### "Permission denied"
-**Solution**: Check file permissions or use `sudo` if necessary. ARX preserves permissions by default.
+Package names can differ between distributions. Install only the helpers needed for your preferred archive formats.
 
-#### "Archive corrupted"
-**Solution**:
-1. Check disk space: `df -h`
-2. Verify archive: `arx --verify archive.tar.gz`
+---
 
-#### Autocompletion not working
-**Solution**: Ensure you sourced the script or installed the completion file.
+## Development
+
+Run the Go tests from the module directory:
+
 ```bash
-source /path/to/arx
-# or
-source /etc/bash_completion.d/arx
+cd arx-go
+go test ./...
+```
+
+Run them with the race detector:
+
+```bash
+go test -race ./...
+```
+
+Build the distribution binary:
+
+```bash
+go build -o ../dist/arx-go .
+```
+
+The project includes focused coverage for copy and move conflicts, cancellation, rollback, cross-filesystem moves, Trash metadata, restore round trips, overwrite protection, and partial restore behavior.
+
+---
+
+## Project layout
+
+```text
+arx-universal-packer/
+├── arx-go/        Go-based dual-pane commander
+├── bin/           Original Bash command-line utility
+├── dist/          Built distribution artifacts
+├── man/           Manual pages for the legacy CLI
+├── svgs/          Demo assets
+└── tests/         Repository-level tests
 ```
 
 ---
 
-## 🤝 Contributing
+## Legacy Bash CLI
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+The original Bash archive utility remains available in `bin/arx`. It provides command-line archive creation, extraction, conversion, filtering, incremental backups, splitting, and desktop integration.
 
-1. Fork the repo
-2. Create a feature branch
-3. Submit a Pull Request
+Use the Go application for the dual-pane commander experience. Use the Bash utility when scripting or when its specialized command-line options are required.
 
-## 📝 License
+---
+
+## Current scope
+
+ARX currently targets Linux terminals and local filesystems. Remote filesystems mounted by the operating system can be used like normal directories, but ARX does not yet provide a native SFTP, FTP, or cloud-storage client.
+
+Potential future work includes background jobs, pause and resume, Linux packages, broader terminal interaction tests, localization, and native remote filesystem connections.
+
+---
+
+## Troubleshooting
+
+### An archive action reports a missing command
+
+Install the helper listed in the error message. For example, `.7z` support requires `7z` or `7zz`, while `.tar.zst` requires `tar` and `zstd`.
+
+### A destination already exists
+
+Use the conflict dialog to choose the appropriate action. ARX does not silently replace existing paths.
+
+### A restore does not overwrite an existing path
+
+This is intentional. ARX leaves the affected item in Trash when its original path has been recreated. Rename or remove the conflicting path, then retry while the undo batch remains available.
+
+### Permission denied
+
+Verify permissions for the source, destination, and Trash location. Running a file manager with `sudo` is generally discouraged because it can create root-owned files in the user's home directory.
+
+---
+
+## Contributing
+
+Contributions and focused bug reports are welcome.
+
+1. Fork the repository.
+2. Create a small, clearly scoped branch.
+3. Add or update tests for behavioral changes.
+4. Run `go test -race ./...` in `arx-go/`.
+5. Open a pull request describing the behavior and safety implications.
+
+Please prefer small changes, existing project patterns, Go's standard library, and fixes that address the underlying cause.
+
+---
+
+## License
 
 Distributed under the MIT License. See [LICENSE](LICENSE).
-
----
-
-**Made with ❤️ for the Linux community.**
