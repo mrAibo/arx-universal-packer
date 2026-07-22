@@ -209,6 +209,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.ensureVisible()
 		return m, nil
+	case tea.BatchMsg:
+		// Bubble Tea expands BatchMsg before Update. Unit tests call commands
+		// directly, so execute only the immediate operation result here.
+		for _, command := range msg {
+			if command == nil {
+				continue
+			}
+			result := command()
+			if _, ok := result.(operationMsg); ok {
+				return m.Update(result)
+			}
+		}
+		return m, nil
 	case operationTickMsg:
 		if !m.busy {
 			return m, nil
