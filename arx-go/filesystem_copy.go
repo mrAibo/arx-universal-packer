@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func copyConflictMessage(conflicts []string, destination string) string {
