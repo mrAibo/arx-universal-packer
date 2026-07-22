@@ -343,7 +343,7 @@ func rebuildArchive(archivePath string, level int, mutate func(string) error) Re
 		return Result{Err: err}
 	}
 	defer os.RemoveAll(staging)
-	if extracted := extractSelected(archive, nil, staging); extracted.Err != nil {
+	if extracted := extract(archive, staging); extracted.Err != nil {
 		return extracted
 	}
 	if err := rejectSymlinks(staging); err != nil {

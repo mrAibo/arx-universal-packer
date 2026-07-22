@@ -600,7 +600,7 @@ func (m model) startF5() (tea.Model, tea.Cmd) {
 	if len(marked) == 0 && len(entries) == 1 && entries[0].IsArchive && !entries[0].IsDir {
 		archivePath := entries[0].Path
 		return m.startOperation("Extracting archive...", func() Result {
-			return extractSelected(archivePath, nil, passive.path)
+			return extract(archivePath, passive.path)
 		})
 	}
 
