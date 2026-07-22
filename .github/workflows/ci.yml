@@ -10,24 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-          fetch-depth: 0
-
-      - name: Update copy keymap tests
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/filesystem-copy'
-        run: |
-          git fetch origin main
-          python3 .github/patches/update-copy-tests.py
-          rm .github/patches/update-copy-tests.py
-          rmdir .github/patches 2>/dev/null || true
-          git checkout origin/main -- .github/workflows/ci.yml
-          gofmt -w arx-go/tui_test.go
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/ci.yml .github/patches/update-copy-tests.py arx-go/tui_test.go
-          git commit -m "Update tests for MC copy keymap"
-          git push origin HEAD:agent/filesystem-copy
 
       - name: Install archive tools
         run: sudo apt-get update && sudo apt-get install -y pigz zstd pbzip2 p7zip-full xz-utils

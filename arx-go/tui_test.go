@@ -57,7 +57,7 @@ func TestSpaceMarksMultipleItemsAndAdvances(t *testing.T) {
 	}
 }
 
-func TestF2MarksAllAndF8Clears(t *testing.T) {
+func TestCtrlAMarksAllAndF8Clears(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"a.txt", "b.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
@@ -65,7 +65,7 @@ func TestF2MarksAllAndF8Clears(t *testing.T) {
 		}
 	}
 	m := initialModelAt(dir)
-	updated, _ := m.Update(runeKey("f2"))
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlA})
 	m = updated.(model)
 	if got := len(m.panes[0].markedEntries()); got != 2 {
 		t.Fatalf("marked=%d want 2", got)
@@ -77,7 +77,7 @@ func TestF2MarksAllAndF8Clears(t *testing.T) {
 	}
 }
 
-func TestF5WithMarkedItemsOpensNamedArchiveDialog(t *testing.T) {
+func TestF2WithMarkedItemsOpensNamedArchiveDialog(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"a.txt", "b.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
@@ -86,7 +86,7 @@ func TestF5WithMarkedItemsOpensNamedArchiveDialog(t *testing.T) {
 	}
 	m := initialModelAt(dir)
 	m.panes[0].markAll()
-	updated, _ := m.Update(runeKey("f5"))
+	updated, _ := m.Update(runeKey("f2"))
 	m = updated.(model)
 
 	if m.modal != modalArchive || m.pending != actionPack {
@@ -111,7 +111,7 @@ func TestArchiveDialogNameCanBeReplaced(t *testing.T) {
 	}
 	m := initialModelAt(dir)
 	m.panes[0].selectName("data.txt")
-	updated, _ := m.Update(runeKey("f5"))
+	updated, _ := m.Update(runeKey("f2"))
 	m = updated.(model)
 	if !m.nameReplaceMode {
 		t.Fatal("dialog should initially select the proposed name")
