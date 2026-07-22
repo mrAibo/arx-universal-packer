@@ -83,11 +83,11 @@ func TestF5CopyRequiresOverwriteConfirmation(t *testing.T) {
 		t.Fatal("copy conflict should wait for confirmation")
 	}
 	confirmation := updated.(model)
-	if confirmation.modal != modalConfirm || confirmation.confirm != confirmFilesystemCopy {
-		t.Fatalf("modal=%v confirm=%v", confirmation.modal, confirmation.confirm)
+	if confirmation.modal != modalCopyConflict || confirmation.copyConflictAction != copyConflictReplace {
+		t.Fatalf("modal=%v action=%v", confirmation.modal, confirmation.copyConflictAction)
 	}
 
-	updated, command = confirmation.updateConfirm(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, command = confirmation.updateCopyConflict(tea.KeyMsg{Type: tea.KeyEnter})
 	if command == nil {
 		t.Fatal("confirmed copy did not start")
 	}

@@ -6,34 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
-
-func (m model) startFilesystemCopy(entries []fileEntry, destination string) (tea.Model, tea.Cmd) {
-	conflicts, err := filesystemCopyConflicts(entries, destination)
-	if err != nil {
-		m.showError(err)
-		return m, nil
-	}
-	if len(conflicts) > 0 {
-		m.modal = modalConfirm
-		m.modalTitle = "Overwrite existing items"
-		m.modalMessage = copyConflictMessage(conflicts, destination)
-		m.confirm = confirmFilesystemCopy
-		m.confirmEntries = append([]fileEntry(nil), entries...)
-		m.confirmDestination = destination
-		return m, nil
-	}
-	return m.runFilesystemCopy(entries, destination, false)
-}
-
-func (m model) runFilesystemCopy(entries []fileEntry, destination string, overwrite bool) (tea.Model, tea.Cmd) {
-	items := append([]fileEntry(nil), entries...)
-	return m.startOperation(fmt.Sprintf("Copying %d selected item(s)...", len(items)), func() Result {
-		return copyFilesystem(items, destination, overwrite)
-	})
-}
 
 func copyConflictMessage(conflicts []string, destination string) string {
 	const visibleLimit = 6

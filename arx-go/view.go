@@ -205,6 +205,8 @@ func (m model) renderModal(width int) string {
 		body.WriteString(errorStyle.Render("Enter/Y confirms"))
 		body.WriteString("   ")
 		body.WriteString(mutedStyle.Render("Esc/N cancels"))
+	case modalCopyConflict:
+		body.WriteString(m.renderCopyConflict())
 	case modalNavigationMenu, modalNavigationInput, modalNavigationList:
 		body.WriteString(m.renderNavigationModal())
 	}
