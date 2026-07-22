@@ -1,0 +1,26 @@
+name: Operation progress diagnostic
+
+on:
+  push:
+    branches: [agent/operation-progress-cancel]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: arx-go/go.sum
+      - name: Run verbose tests
+        run: |
+          set -o pipefail
+          cd arx-go
+          go test -race -v ./... 2>&1 | tee ../operation-progress-test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: operation-progress-test
+          path: operation-progress-test.log
+          if-no-files-found: error
